@@ -457,6 +457,15 @@ cache_inode_rename(cache_entry_t *dir_src,
 	/* unlock entries */
 	src_dest_unlock(dir_src, dir_dest);
 
+	{
+		struct fsal_export *fsal_export =
+			fsal_export = op_ctx->fsal_export;
+		if (fsal_export->exp_ops.fs_supports(
+				fsal_export, fso_renames_invalidate_handles)) {
+			cache_inode_kill_entry(dir_dest);
+		}
+	}
+
 out:
 	if (lookup_src)
 		cache_inode_put(lookup_src);
