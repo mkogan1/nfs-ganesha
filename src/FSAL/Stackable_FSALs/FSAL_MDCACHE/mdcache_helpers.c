@@ -3201,6 +3201,7 @@ again:
 				 * placed, we need to restart readdir.
 				 */
 				mdcache_lru_unref_chunk(chunk);
+				chunk = NULL;
 				goto restart;
 			}
 		}
