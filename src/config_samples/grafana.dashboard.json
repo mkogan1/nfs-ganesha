@@ -111,7 +111,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ganesha:nfs_requests:rate1m",
+          "expr": "ganesha:nfs_ganesha_nfs_requests:rate1m",
           "interval": "",
           "legendFormat": "{{ operation}}",
           "refId": "A"
@@ -207,7 +207,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ganesha:latency_ms_percentile:rate1m{percentile=\"50\"}",
+          "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{percentile=\"50\"}",
           "interval": "",
           "legendFormat": "{{ operation}}",
           "refId": "A"
@@ -303,7 +303,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ganesha:nfs_bytes_transferred:rate1m",
+          "expr": "ganesha:nfs_ganesha_nfs_bytes_transferred:rate1m",
           "interval": "",
           "legendFormat": "{{ operation}}",
           "refId": "A"
@@ -400,7 +400,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ganesha:mdcache_cache_hit_ratio:rate1m * 100",
+          "expr": "ganesha:nfs_ganesha_mdcache_cache_hit_ratio:rate1m * 100",
           "interval": "",
           "legendFormat": "{{ operation }}",
           "refId": "A"
@@ -508,7 +508,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{percentile=\"1\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{percentile=\"1\"}",
               "interval": "",
               "legendFormat": "{{ operation}}",
               "refId": "A"
@@ -604,7 +604,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{percentile=\"90\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{percentile=\"90\"}",
               "interval": "",
               "legendFormat": "{{ operation}}",
               "refId": "A"
@@ -700,7 +700,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{percentile=\"50\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{percentile=\"50\"}",
               "interval": "",
               "legendFormat": "{{ operation}}",
               "refId": "A"
@@ -796,7 +796,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{percentile=\"95\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{percentile=\"95\"}",
               "interval": "",
               "legendFormat": "{{ operation}}",
               "refId": "A"
@@ -906,7 +906,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{operation=\"read\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{operation=\"read\"}",
               "interval": "",
               "legendFormat": "{{ percentile }}%",
               "refId": "A"
@@ -1001,7 +1001,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{operation=\"write\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{operation=\"write\"}",
               "interval": "",
               "legendFormat": "{{ percentile }}%",
               "refId": "A"
@@ -1096,7 +1096,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{operation=\"getattr\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{operation=\"getattr\"}",
               "interval": "",
               "legendFormat": "{{ percentile }}%",
               "refId": "A"
@@ -1191,7 +1191,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{operation=\"lookup\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{operation=\"lookup\"}",
               "interval": "",
               "legendFormat": "{{ percentile }}%",
               "refId": "A"
@@ -1286,7 +1286,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_percentile:rate1m{operation=\"access\"}",
+              "expr": "ganesha:nfs_ganesha_latency_ms_percentile:rate1m{operation=\"access\"}",
               "interval": "",
               "legendFormat": "{{ percentile }}%",
               "refId": "A"
@@ -1444,7 +1444,7 @@
           "reverseYBuckets": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_response_size_bytes:rate1m{operation=\"read\"}",
+              "expr": "ganesha:nfs_ganesha_nfs_response_size_bytes:rate1m{operation=\"read\"}",
               "format": "heatmap",
               "interval": "",
               "legendFormat": "{{ le }}",
@@ -1522,7 +1522,7 @@
           "reverseYBuckets": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_request_size_bytes:rate1m{operation=\"write\"}",
+              "expr": "ganesha:nfs_ganesha_nfs_request_size_bytes:rate1m{operation=\"write\"}",
               "format": "heatmap",
               "interval": "",
               "legendFormat": "{{ le }}",
@@ -1600,7 +1600,7 @@
           "reverseYBuckets": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_request_size_bytes:rate1m{operation=\"read\"}",
+              "expr": "ganesha:nfs_ganesha_nfs_request_size_bytes:rate1m{operation=\"read\"}",
               "format": "heatmap",
               "interval": "",
               "legendFormat": "{{ le }}",
@@ -1698,7 +1698,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_errors:rate1m{status!~\"NFS3_OK|NFS4_OK\"}",
+              "expr": "ganesha:nfs_ganesha_nfs_errors:rate1m{status!~\"NFS3_OK|NFS4_OK\"}",
               "interval": "",
               "legendFormat": "{{ version }} {{ operation }} {{ status }}",
               "refId": "A"
@@ -1794,7 +1794,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_errors:ratio:rate1m",
+              "expr": "ganesha:nfs_ganesha_nfs_errors:ratio:rate1m",
               "interval": "",
               "legendFormat": "{{ version }} {{ operation }}",
               "refId": "A"
@@ -1891,7 +1891,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_errors:sum{status!~\"NFS3_OK|NFS4_OK\"}",
+              "expr": "ganesha:nfs_ganesha_nfs_errors:sum{status!~\"NFS3_OK|NFS4_OK\"}",
               "interval": "",
               "legendFormat": "{{ version }} {{ operation }} {{ status }}",
               "refId": "A"
@@ -2002,7 +2002,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_requests_by_export:sum:rate1m",
+              "expr": "ganesha:nfs_ganesha_nfs_requests_by_export:sum:rate1m",
               "interval": "",
               "legendFormat": "{{ export}}",
               "refId": "A"
@@ -2099,7 +2099,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:mdcache_cache_hit_ratio_by_export:rate1m{operation=\"getattr\"} * 100",
+              "expr": "ganesha:nfs_ganesha_mdcache_cache_hit_ratio_by_export:rate1m{operation=\"getattr\"} * 100",
               "interval": "",
               "legendFormat": "{{ export }}",
               "refId": "A"
@@ -2196,7 +2196,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_bytes_transferred_by_export:rate1m{operation=\"read\"}",
+              "expr": "ganesha:nfs_ganesha_nfs_bytes_transferred_by_export:rate1m{operation=\"read\"}",
               "interval": "",
               "legendFormat": "{{ export }}",
               "refId": "A"
@@ -2293,7 +2293,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:mdcache_cache_hit_ratio_by_export:rate1m{operation=\"lookup\"} * 100",
+              "expr": "ganesha:nfs_ganesha_mdcache_cache_hit_ratio_by_export:rate1m{operation=\"lookup\"} * 100",
               "interval": "",
               "legendFormat": "{{ export }}",
               "refId": "A"
@@ -2390,7 +2390,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:nfs_bytes_transferred_by_export:rate1m{operation=\"write\"}",
+              "expr": "ganesha:nfs_ganesha_nfs_bytes_transferred_by_export:rate1m{operation=\"write\"}",
               "interval": "",
               "legendFormat": "{{ export }}",
               "refId": "A"
@@ -2501,7 +2501,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_by_export_percentile:rate1m{percentile=\"50\", operation=\"read\"}",
+              "expr": "ganesha:nfs_ganesha_latency_by_export_ms_percentile:rate1m{percentile=\"50\", operation=\"read\"}",
               "interval": "",
               "legendFormat": "{{ export }}",
               "refId": "A"
@@ -2597,7 +2597,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_by_export_percentile:rate1m{percentile=\"50\"}",
+              "expr": "ganesha:nfs_ganesha_latency_by_export_ms_percentile:rate1m{percentile=\"50\"}",
               "interval": "",
               "legendFormat": "{{ operation }} {{ export }}",
               "refId": "A"
@@ -2693,7 +2693,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:latency_ms_by_export_percentile:rate1m{percentile=\"90\", operation=\"read\"}",
+              "expr": "ganesha:nfs_ganesha_latency_by_export_ms_percentile:rate1m{percentile=\"90\", operation=\"read\"}",
               "interval": "",
               "legendFormat": "{{ export }}",
               "refId": "A"
@@ -2804,7 +2804,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:rpcs_in_flight",
+              "expr": "ganesha:nfs_ganesha_rpcs_in_flight",
               "interval": "",
               "legendFormat": "rpcs",
               "refId": "A"
@@ -2900,13 +2900,13 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:rpcs_received:rate1m",
+              "expr": "ganesha:nfs_ganesha_rpcs_received:rate1m",
               "interval": "",
               "legendFormat": "received",
               "refId": "A"
             },
             {
-              "expr": "ganesha:rpcs_completed:rate1m",
+              "expr": "ganesha:nfs_ganesha_rpcs_completed:rate1m",
               "interval": "",
               "legendFormat": "completed",
               "refId": "B"
@@ -3002,7 +3002,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "ganesha:active_clients_60s:sum",
+              "expr": "ganesha:nfs_ganesha_active_clients_60s:sum",
               "interval": "",
               "legendFormat": "Active clients",
               "refId": "A"

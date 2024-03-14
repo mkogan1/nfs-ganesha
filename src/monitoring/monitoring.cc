@@ -32,6 +32,7 @@
 #include "prometheus/exposer.h"
 #include "prometheus/family.h"
 #include "prometheus/histogram.h"
+#include "prometheus/info.h"
 #include "prometheus/registry.h"
 
 #include "monitoring.h"
@@ -66,6 +67,9 @@ namespace ganesha_monitoring {
 class Metrics {
  public:
   Metrics(prometheus::Registry &registry);
+
+  // Info
+  prometheus::Family<prometheus::Info> &ganeshaInfo;
 
   // Counters
   prometheus::Family<prometheus::Counter> &mdcacheCacheHitsTotal;
@@ -105,133 +109,140 @@ class Metrics {
 };
 
 Metrics::Metrics(prometheus::Registry &registry) :
+  // Info
+  ganeshaInfo(
+      prometheus::BuildInfo()
+      .Name("nfs_ganesha")
+      .Help("Information about Ganesha instance.")
+      .Register(registry)),
+
   // Counters
   mdcacheCacheHitsTotal(
       prometheus::BuildCounter()
-      .Name("mdcache_cache_hits_total")
+      .Name("nfs_ganesha_mdcache_cache_hits_total")
       .Help("Counter for total cache hits in mdcache.")
       .Register(registry)),
   mdcacheCacheMissesTotal(
       prometheus::BuildCounter()
-      .Name("mdcache_cache_misses_total")
+      .Name("nfs_ganesha_mdcache_cache_misses_total")
       .Help("Counter for total cache misses in mdcache.")
       .Register(registry)),
   mdcacheCacheHitsByExportTotal(
       prometheus::BuildCounter()
-      .Name("mdcache_cache_hits_by_export_total")
+      .Name("nfs_ganesha_mdcache_cache_hits_by_export_total")
       .Help("Counter for total cache hits in mdcache, by export.")
       .Register(registry)),
   mdcacheCacheMissesByExportTotal(
       prometheus::BuildCounter()
-      .Name("mdcache_cache_misses_by_export_total")
+      .Name("nfs_ganesha_mdcache_cache_misses_by_export_total")
       .Help("Counter for total cache misses in mdcache, by export.")
       .Register(registry)),
   rpcsReceivedTotal(
       prometheus::BuildCounter()
-      .Name("rpcs_received_total")
+      .Name("nfs_ganesha_rpcs_received_total")
       .Help("Counter for total RPCs received.")
       .Register(registry)),
   rpcsCompletedTotal(
       prometheus::BuildCounter()
-      .Name("rpcs_completed_total")
+      .Name("nfs_ganesha_rpcs_completed_total")
       .Help("Counter for total RPCs completed.")
       .Register(registry)),
   errorsByVersionOperationStatus(
       prometheus::BuildCounter()
-      .Name("nfs_errors_total")
+      .Name("nfs_ganesha_nfs_errors_total")
       .Help("Error count by version, operation and status.")
       .Register(registry)),
 
   // Per client metrics.
   clientRequestsTotal(
       prometheus::BuildCounter()
-      .Name("client_requests_total")
+      .Name("nfs_ganesha_client_requests_total")
       .Help("Total requests by client.")
       .Register(registry)),
   clientBytesReceivedTotal(
       prometheus::BuildCounter()
-      .Name("client_bytes_received_total")
+      .Name("nfs_ganesha_client_bytes_received_total")
       .Help("Total request bytes by client.")
       .Register(registry)),
   clientBytesSentTotal(
       prometheus::BuildCounter()
-      .Name("client_bytes_sent_total")
+      .Name("nfs_ganesha_client_bytes_sent_total")
       .Help("Total response bytes sent by client.")
       .Register(registry)),
 
   // Gauges
   rpcsInFlight(
       prometheus::BuildGauge()
-      .Name("rpcs_in_flight")
+      .Name("nfs_ganesha_rpcs_in_flight")
       .Help("Number of NFS requests received or in flight.")
       .Register(registry)),
   lastClientUpdate(
       prometheus::BuildGauge()
-      .Name("last_client_update")
+      .Name("nfs_ganesha_last_client_update")
       .Help("Last update timestamp, per client.")
       .Register(registry)),
 
   // Per {operation} NFS request metrics.
   requestsTotalByOperation(
       prometheus::BuildCounter()
-      .Name("nfs_requests_total")
+      .Name("nfs_ganesha_nfs_requests_total")
       .Help("Total requests.")
       .Register(registry)),
   bytesReceivedTotalByOperation(
       prometheus::BuildCounter()
-      .Name("nfs_bytes_received_total")
+      .Name("nfs_ganesha_nfs_bytes_received_total")
       .Help("Total request bytes.")
       .Register(registry)),
   bytesSentTotalByOperation(
       prometheus::BuildCounter()
-      .Name("nfs_bytes_sent_total")
+      .Name("nfs_ganesha_nfs_bytes_sent_total")
       .Help("Total response bytes.")
       .Register(registry)),
   requestSizeByOperation(
       prometheus::BuildHistogram()
-      .Name("nfs_request_size_bytes")
+      .Name("nfs_ganesha_nfs_request_size_bytes")
       .Help("Request size in bytes.")
       .Register(registry)),
   responseSizeByOperation(
       prometheus::BuildHistogram()
-      .Name("nfs_response_size_bytes")
+      .Name("nfs_ganesha_nfs_response_size_bytes")
       .Help("Response size in bytes.")
       .Register(registry)),
   latencyByOperation(
       prometheus::BuildHistogram()
-      .Name("nfs_latency_ms")
+      .Name("nfs_ganesha_nfs_latency_ms")
       .Help("Request latency in ms.")
       .Register(registry)),
 
   // Per {operation, export_id} NFS request metrics.
   requestsTotalByOperationExport(
       prometheus::BuildCounter()
-      .Name("nfs_requests_by_export_total")
+      .Name("nfs_ganesha_nfs_requests_by_export_total")
       .Help("Total requests by export.")
       .Register(registry)),
   bytesReceivedTotalByOperationExport(
       prometheus::BuildCounter()
-      .Name("nfs_bytes_received_by_export_total")
+      .Name("nfs_ganesha_nfs_bytes_received_by_export_total")
       .Help("Total request bytes by export.")
       .Register(registry)),
   bytesSentTotalByOperationExport(
       prometheus::BuildCounter()
-      .Name("nfs_bytes_sent_by_export_total")
+      .Name("nfs_ganesha_nfs_bytes_sent_by_export_total")
       .Help("Total response bytes by export.")
       .Register(registry)),
   requestSizeByOperationExport(
       prometheus::BuildHistogram()
-      .Name("nfs_request_size_by_export_bytes")
+      .Name("nfs_ganesha_nfs_request_size_by_export_bytes")
       .Help("Request size by export in bytes.")
       .Register(registry)),
   responseSizeByOperationExport(
       prometheus::BuildHistogram()
-      .Name("nfs_response_size_by_export_bytes")
+      .Name("nfs_ganesha_nfs_response_size_by_export_bytes")
       .Help("Response size by export in bytes.")
       .Register(registry)),
   latencyByOperationExport(
       prometheus::BuildHistogram()
-      .Name("nfs_latency_ms_by_export")
+      .Name("nfs_ganesha_nfs_latency_by_export_ms")
       .Help("Request latency by export in ms.")
       .Register(registry)) {
 }
@@ -337,6 +348,12 @@ void monitoring_init(const uint16_t port) {
   registry = std::make_shared<prometheus::Registry>();
   exposer->RegisterCollectable(registry);
   metrics.reset(new Metrics(*registry));
+  metrics->ganeshaInfo.Add({{"ganesha", "V" GANESHA_VERSION},
+#if !GANESHA_BUILD_RELEASE
+               {"git_head", _GIT_HEAD_COMMIT},
+               {"git_describe", _GIT_DESCRIBE},
+#endif
+              });
   initialised = true;
 }
 
