@@ -63,6 +63,7 @@
 #endif
 #include "client_mgr.h"
 #include "export_mgr.h"
+#include "nfs_qos.h"
 #include "server_stats_private.h"
 #include "abstract_atomic.h"
 #include "gsh_intrinsic.h"
@@ -265,6 +266,7 @@ out:
 	PTHREAD_RWLOCK_unlock(&client_by_ip.cip_lock);
 	if (removed == 0) {
 		server_st = container_of(cl, struct server_stats, client);
+		qos_free_mem(cl, 1);
 		server_stats_free(&server_st->st);
 		server_stats_allops_free(&server_st->c_all);
 		connection_manager__client_fini(&cl->connection_manager);
@@ -346,7 +348,7 @@ static bool arg_ipaddr(DBusMessageIter *args, sockaddr_t *sp, char **errormsg)
 /** @brief lookup gsh_client from input ip-address
  */
 
-static struct gsh_client *lookup_client(DBusMessageIter *args, char **errormsg)
+struct gsh_client *lookup_client(DBusMessageIter *args, char **errormsg)
 {
 	sockaddr_t sockaddr;
 	struct gsh_client *client = NULL;

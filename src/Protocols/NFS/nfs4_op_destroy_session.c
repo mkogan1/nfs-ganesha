@@ -36,6 +36,7 @@
 #include "config.h"
 #include "sal_functions.h"
 #include "nfs_proto_functions.h"
+#include "nfs_qos.h"
 
 #include "gsh_lttng/gsh_lttng.h"
 #if defined(USE_LTTNG) && !defined(LTTNG_PARSING)
@@ -103,7 +104,7 @@ enum nfs_req_result nfs4_op_destroy_session(struct nfs_argop4 *op,
 
 	/* Release ref taken in get_pointer */
 	dec_session_ref(session);
-
+	qos_free_mem(op_ctx->client, QOS_CLIENT);
 	GSH_AUTO_TRACEPOINT(nfs4, op_destroy_session_end, TRACE_INFO,
 			    "DESTROY_SESSION res: status={}",
 			    res_DESTROY_SESSION4->dsr_status);

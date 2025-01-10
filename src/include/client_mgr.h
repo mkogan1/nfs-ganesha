@@ -57,6 +57,7 @@ struct gsh_client {
 	struct timespec last_update;
 	char hostaddr_str[SOCK_NAME_MAX];
 	sockaddr_t cl_addrbuf;
+	struct QoS_perClient_Class *qos_class;
 	uint64_t state_stats[STATE_TYPE_MAX]; /* state stats for this client */
 	connection_manager__client_t connection_manager;
 };

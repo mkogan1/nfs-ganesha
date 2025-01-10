@@ -44,6 +44,7 @@
 #include "fsal_pnfs.h"
 #include "server_stats.h"
 #include "export_mgr.h"
+#include "nfs_qos.h"
 
 #include "gsh_lttng/gsh_lttng.h"
 #if defined(USE_LTTNG) && !defined(LTTNG_PARSING)
@@ -61,6 +62,8 @@ struct nfs4_write_data {
 	struct fsal_obj_handle *obj;
 	/** Flags to control synchronization */
 	uint32_t flags;
+	/** QOS flag used while resuming the op */
+	uint32_t qos_flag;
 	/** Arguments for write call - must be last */
 	struct fsal_io_arg write_arg;
 };
@@ -143,7 +146,9 @@ enum nfs_req_result nfs4_op_write_resume(struct nfs_argop4 *op,
 	enum nfs_req_result rc;
 	uint32_t flags;
 
-	if (write_data->write_arg.fsal_resume) {
+	if (write_data->write_arg.fsal_resume ||
+	    (write_data->qos_flag & IS_QOS_IO)) {
+		write_data->qos_flag = 0;
 		/* FSAL is requesting another write2 call on resume */
 		atomic_postclear_uint32_t_bits(
 			&write_data->flags, ASYNC_PROC_EXIT | ASYNC_PROC_DONE);
@@ -474,6 +479,7 @@ enum nfs_req_result nfs4_op_write(struct nfs_argop4 *op, compound_data_t *data,
 
 	/* Set up args, allocate from heap, iov_len will be 1 */
 	write_data = gsh_calloc(1, sizeof(*write_data));
+	write_data->qos_flag = 0;
 	LogFullDebug(COMPONENT_NFS_V4, "Allocated write_data %p", write_data);
 	write_arg = &write_data->write_arg;
 	write_arg->info = NULL;
@@ -491,6 +497,14 @@ enum nfs_req_result nfs4_op_write(struct nfs_argop4 *op, compound_data_t *data,
 	write_data->obj = obj;
 
 	data->op_data = write_data;
+
+	if (QoS_Process(size, write_data, data, QOS_WRITE)) {
+		flags = atomic_postset_uint32_t_bits(&write_data->flags,
+						     ASYNC_PROC_EXIT);
+		write_data->qos_flag |= IS_QOS_IO;
+		LogFullDebug(COMPONENT_QOS, "write_data %p", write_data);
+		goto out;
+	}
 
 again:
 
@@ -510,7 +524,8 @@ out:
 		state_open = NULL;
 	}
 
-	if ((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) {
+	if (((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) ||
+	    (write_data->qos_flag & IS_QOS_IO)) {
 		/* The write was not finished before we got here. When the
 		 * write completes, nfs4_write_cb() will have to reschedule the
 		 * request for completion. The resume will be resolved by
@@ -522,7 +537,7 @@ out:
 	}
 
 	if (write_data != NULL && write_arg->fsal_resume) {
-		/* FSAL is requesting another read2 call */
+		/* FSAL is requesting another write2 call */
 		atomic_postclear_uint32_t_bits(
 			&write_data->flags, ASYNC_PROC_EXIT | ASYNC_PROC_DONE);
 		/* Make the call with the same params, though the FSAL will be
@@ -616,4 +631,37 @@ enum nfs_req_result nfs4_op_write_same(struct nfs_argop4 *op,
 void nfs4_op_write_same_Free(nfs_resop4 *resp)
 {
 	/* Nothing to be done */
+}
+
+void nfs4_qos_write_cb(void *args)
+{
+	struct qos_op_cb_arg *qos_cb_args = args;
+	struct nfs4_write_data *write_data = qos_cb_args->caller_data;
+	uint32_t flags;
+
+	if (qos_cb_args->ratecontrol) {
+		/* Ratecontrol io, need to be resumed, should take default path */
+		LogFullDebug(COMPONENT_QOS, "Ratecontrol IO exit write_data:%p",
+			     write_data);
+		write_data->res_WRITE4->status = NFS4_OK;
+		svc_resume(write_data->data->req);
+
+	} else {
+		LogFullDebug(COMPONENT_QOS, "Token IO exit write_data:%p",
+			     write_data);
+
+		/* Since io needs to be errored out, reset the qos_flag */
+		write_data->qos_flag = 0;
+		write_data->res_WRITE4->status = NFS4ERR_DELAY;
+		flags = atomic_postset_uint32_t_bits(&write_data->flags,
+						     ASYNC_PROC_DONE);
+		/* Once testing is done no need of below block, directly call svc_resume */
+		if ((flags & ASYNC_PROC_EXIT) == ASYNC_PROC_EXIT) {
+			svc_resume(write_data->data->req);
+		} else {
+			LogFullDebug(COMPONENT_QOS,
+				     "Shoudn't enter this block");
+		}
+	}
+	gsh_free(args);
 }

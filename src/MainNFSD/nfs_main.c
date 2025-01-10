@@ -48,6 +48,7 @@
 #include "config_parsing.h"
 #include "conf_url.h"
 #include "sal_functions.h"
+#include "nfs_qos.h"
 
 #ifdef USE_MONITORING
 #include "monitoring.h"
