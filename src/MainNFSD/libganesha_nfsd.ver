@@ -127,6 +127,7 @@
   gsh_refstr_release;
   g_max_files_delegatable;
   g_nodeid;
+  g_node_vip;
   hashtable_deletelatched;
   hashtable_for_each;
   hashtable_getlatch;

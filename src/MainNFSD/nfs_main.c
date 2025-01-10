@@ -79,7 +79,7 @@ bool config_errors_fatal;
 #define LTTNG_OPTION
 #endif /* USE_LTTNG */
 
-static const char options[] = "v@L:N:S:f:p:FRTE:ChI:x" LTTNG_OPTION;
+static const char options[] = "v@L:N:S:f:p:FRTE:ChIV:x" LTTNG_OPTION;
 static const char usage[] =
 	"Usage: %s [-hd][-L <logfile>][-N <dbg_lvl>][-f <config_file>]\n"
 	"\t[-v]                display version information\n"
@@ -93,6 +93,7 @@ static const char usage[] =
 	"\t[-T]                dump the default configuration on stdout\n"
 	"\t[-E <epoch>]        overrides ServerBootTime for ServerEpoch\n"
 	"\t[-I <nodeid>]       cluster nodeid\n"
+	"\t[-V <virtual ip>]   node virtual ip\n"
 	"\t[-C]                dump trace when segfault\n"
 	"\t[-x]                fatal exit if there are config errors on startup\n"
 	"\t[-h]                display this help\n"
@@ -309,6 +310,10 @@ int main(int argc, char *argv[])
 			g_nodeid = atoi(optarg);
 			break;
 
+		case 'V':
+			g_node_vip = main_strdup("virtual ip", optarg);
+			break;
+
 		case 'x':
 			config_errors_fatal = true;
 			break;
@@ -379,25 +384,25 @@ int main(int argc, char *argv[])
 			dev_null_fd = open("/dev/null", O_RDWR);
 			if (dev_null_fd < 0)
 				LogFatal(COMPONENT_MAIN,
-					"Could not open /dev/null: %d (%s)",
-					errno, strerror(errno));
+					 "Could not open /dev/null: %d (%s)",
+					 errno, strerror(errno));
 
 			if (dup2(dev_null_fd, STDIN_FILENO) == -1) {
 				LogFatal(COMPONENT_MAIN,
-					"dup2 for stdin failed: %d (%s)",
-					errno, strerror(errno));
+					 "dup2 for stdin failed: %d (%s)",
+					 errno, strerror(errno));
 			}
 
 			if (dup2(dev_null_fd, STDOUT_FILENO) == -1) {
 				LogFatal(COMPONENT_MAIN,
-					"dup2 for stdout failed: %d (%s)",
-					errno, strerror(errno));
+					 "dup2 for stdout failed: %d (%s)",
+					 errno, strerror(errno));
 			}
 
 			if (dup2(dev_null_fd, STDERR_FILENO) == -1) {
 				LogFatal(COMPONENT_MAIN,
-					"dup2 for stderr failed: %d (%s)",
-					errno, strerror(errno));
+					 "dup2 for stderr failed: %d (%s)",
+					 errno, strerror(errno));
 			}
 
 			if (close(dev_null_fd) == -1)

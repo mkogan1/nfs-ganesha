@@ -113,6 +113,7 @@ writeverf3 NFS3_write_verifier; /* NFS V3 write verifier */
 
 /* node ID used to identify an individual node in a cluster */
 int g_nodeid = -1;
+char *g_node_vip;
 
 nfs_start_info_t nfs_start_info;
 

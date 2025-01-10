@@ -93,6 +93,7 @@ extern uint32_t root_op_export_set;
  * cluster implementation.
  */
 extern int g_nodeid;
+extern char *g_node_vip;
 
 void init_ctx_refstr(void);
 void destroy_ctx_refstr(void);

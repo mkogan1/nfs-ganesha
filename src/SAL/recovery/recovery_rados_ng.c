@@ -163,6 +163,20 @@ static int rados_ng_init(void)
 				ret, strerror(ret));
 			return -ret;
 		}
+	} else if (g_node_vip) {
+		ret = snprintf(host, sizeof(host), "%s", g_node_vip);
+		if (unlikely(ret >= sizeof(host))) {
+			LogCrit(COMPONENT_CLIENTID, "node%s too long",
+				g_node_vip);
+			return -ENAMETOOLONG;
+		} else if (unlikely(ret < 0)) {
+			ret = errno;
+			LogCrit(COMPONENT_CLIENTID,
+				"Unexpected return from snprintf %d error %s (%d)",
+				ret, strerror(ret), ret);
+			return ret;
+		}
+
 	} else {
 		/* use hostname */
 		ret = gethostname(host, sizeof(host));
