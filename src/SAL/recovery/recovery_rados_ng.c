@@ -128,31 +128,43 @@ struct cleanup_list_element rados_ng_cleanup_element = {
 
 static int rados_ng_init(void)
 {
-	int ret;
+	int ret, node_id;
 	size_t len;
 	struct gsh_refstr *recov_oid;
 	char host[NI_MAXHOST];
 	rados_write_op_t op;
+	bool use_host_name = false;
 
 	PTHREAD_MUTEX_init(&grace_op_lock, NULL);
 
 	RegisterCleanup(&rados_ng_cleanup_element);
 
 	if (nfs_param.core_param.clustered) {
-		ret = snprintf(host, sizeof(host), "node%d", g_nodeid);
+		/* Get the nodeid from config */
+		node_id = rados_kv_param.nodeid;
+		/* check nodeid override with "I" option */
+		if (g_nodeid >= 0)
+			node_id = g_nodeid;
+		/* check if we need to use host-name */
+		if (node_id < 0)
+			use_host_name = true;
+	}
+	if (!use_host_name) {
+		ret = snprintf(host, sizeof(host), "node%d", node_id);
 
 		if (unlikely(ret >= sizeof(host))) {
 			LogCrit(COMPONENT_CLIENTID, "node%d too long",
-				g_nodeid);
+				node_id);
 			return -ENAMETOOLONG;
 		} else if (unlikely(ret < 0)) {
 			ret = errno;
 			LogCrit(COMPONENT_CLIENTID,
-				"Unexpected return from snprintf %d error %s (%d)",
-				ret, strerror(ret), ret);
+				"Unexpected return from snprintf %d error %s",
+				ret, strerror(ret));
 			return -ret;
 		}
 	} else {
+		/* use hostname */
 		ret = gethostname(host, sizeof(host));
 		if (ret) {
 			ret = errno;

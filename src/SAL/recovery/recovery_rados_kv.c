@@ -55,7 +55,7 @@ static struct config_item rados_kv_params[] = {
 		      namespace),
 	CONF_ITEM_STR("grace_oid", 1, NI_MAXHOST, DEFAULT_RADOS_GRACE_OID,
 		      rados_kv_parameter, grace_oid),
-	CONF_ITEM_STR("nodeid", 1, NI_MAXHOST, NULL, rados_kv_parameter,
+	CONF_ITEM_I32("nodeid", 0, INT32_MAX, -1, rados_kv_parameter,
 		      nodeid),
 	CONFIG_EOL
 };
@@ -401,28 +401,38 @@ void rados_kv_shutdown(void)
 
 int rados_kv_init(void)
 {
-	int ret;
+	int ret, node_id;
 	size_t len, host_len;
 	struct gsh_refstr *recov_oid = NULL, *old_oid = NULL;
 	char host[NI_MAXHOST];
+	bool use_host_name = false;
 
 	if (nfs_param.core_param.clustered) {
-		ret = snprintf(host, sizeof(host), "node%d", g_nodeid);
+		/* Get the nodeid from config */
+		node_id = rados_kv_param.nodeid;
+		/* check nodeid override with "I" option */
+		if (g_nodeid >= 0)
+			node_id = g_nodeid;
+		/* check if we need to use host-name */
+		if (node_id < 0)
+			use_host_name = true;
+	}
+	if (!use_host_name) {
+		ret = snprintf(host, sizeof(host), "node%d", node_id);
 
 		if (unlikely(ret >= sizeof(host))) {
 			LogCrit(COMPONENT_CLIENTID, "node%d too long",
-				g_nodeid);
+				node_id);
 			return -ENAMETOOLONG;
 		} else if (unlikely(ret < 0)) {
 			ret = errno;
 			LogCrit(COMPONENT_CLIENTID,
-				"Unexpected return from snprintf %d error %s (%d)",
-				ret, strerror(ret), ret);
+				"Unexpected return from snprintf %d error %s",
+				ret, strerror(ret));
 			return -ret;
 		}
 	} else {
 		ret = gethostname(host, sizeof(host));
-
 		if (ret) {
 			ret = errno;
 			LogCrit(COMPONENT_CLIENTID,
@@ -732,10 +742,17 @@ out:
 
 int rados_kv_get_nodeid(char **pnodeid)
 {
+	char *nodeid = NULL;
+	int ret = 0;
 	/* return the nodeid if we have one */
-	if (rados_kv_param.nodeid)
-		*pnodeid = gsh_strdup(rados_kv_param.nodeid);
-	return 0;
+	if (rados_kv_param.nodeid >= 0) {
+		nodeid = gsh_malloc(16); /* int max value is 11 digits */
+		ret = snprintf(nodeid, 15, "%d", rados_kv_param.nodeid);
+		if (ret < 16 && ret > 0)
+			ret = 0;
+	}
+	*pnodeid = nodeid;
+	return ret;
 }
 
 struct nfs4_recovery_backend rados_kv_backend = {

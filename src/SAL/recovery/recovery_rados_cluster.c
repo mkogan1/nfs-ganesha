@@ -59,15 +59,31 @@ static void rados_grace_watchcb(void *arg, uint64_t notify_id, uint64_t handle,
 
 static int rados_cluster_init(void)
 {
-	int ret;
+	int ret, node_id;
+	long maxlen = sysconf(_SC_HOST_NAME_MAX);
+
+	nodeid = gsh_malloc(maxlen);
 
 	/* If no nodeid is specified, then use the hostname */
-	if (rados_kv_param.nodeid) {
-		nodeid = gsh_strdup(rados_kv_param.nodeid);
+	if (rados_kv_param.nodeid > 0) {
+		node_id = rados_kv_param.nodeid;
+		/* check nodeid override with "I" option */
+		if (g_nodeid >= 0)
+			node_id = g_nodeid;
+		ret = snprintf(nodeid, maxlen, "node%d", node_id);
+		if (unlikely(ret >= maxlen)) {
+			LogCrit(COMPONENT_CLIENTID, "node%d too long",
+					node_id);
+			ret = -ENAMETOOLONG;
+			goto out_free_nodeid;
+		} else if (unlikely(ret < 0)) {
+			ret = errno;
+			LogCrit(COMPONENT_CLIENTID,
+				"Unexpected return from snprintf %d error %s",
+				ret, strerror(ret));
+			goto out_free_nodeid;
+		}
 	} else {
-		long maxlen = sysconf(_SC_HOST_NAME_MAX);
-
-		nodeid = gsh_malloc(maxlen);
 		ret = gethostname(nodeid, maxlen);
 		if (ret) {
 			ret = -errno;
