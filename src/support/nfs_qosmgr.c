@@ -1,10 +1,39 @@
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+/*
+ * vim:noexpandtab:shiftwidth=8:tabstop=8:
+ *
+ * Copyright (C) 2025, IBM . All rights reserved.
+ * Author: Deeraj Patil <deeraj.patil@ibm.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA.  see <http://www.gnu.org/licenses/
+ *
+ * ---------------------------------------
+ */
+
+/**
+ * @file nfs_qosmgr.c
+ * @brief Routines used for managing the QOS via DBUS.
+ *	-> Run time updation of BW etc.
+ *
+ *
+ */
 #include "nfs_core.h"
 #include "nfs_qos.h"
 #include "nfs_qosmgr.h"
-#include "gsh_dbus.h"
-/*  Bandwidth Control Methods */
-extern struct gsh_client *lookup_client(DBusMessageIter *args, char **errormsg);
-extern struct qos_block_config *g_qos_config;
+
 /*  QoS Method Arguments */
 #define CLIENT_IP_ARG { "client_ip", "s", "in" }
 #define READ_BW_IN_ARG { "read_bw", "t", "in" }
@@ -24,7 +53,6 @@ extern struct qos_block_config *g_qos_config;
 #define QOS_CLIENT_CONTAINER "(s(ss)(ss)(ss))"
 #define QOS_CLIENTS_REPLY { "clients", "a(s(ss)(ss)(ss))", "out" }
 
-char *errormsg = "EINVAL";
 struct showclients_state {
 	DBusMessageIter client_iter;
 };
@@ -46,6 +74,14 @@ struct showclients_state {
 		}                                                            \
 	} while (0)
 
+#define CHECK_ARG_AND_RETURN(args, iter, msg)                     \
+	do {                                                      \
+		if (!args) {                                      \
+			gsh_dbus_status_reply(&iter, false, msg); \
+			return true;                              \
+		}                                                 \
+	} while (0)
+
 static bool dbus_qos_client_bw_set(DBusMessageIter *args, DBusMessage *reply,
 				   DBusError *error)
 {
@@ -53,19 +89,13 @@ static bool dbus_qos_client_bw_set(DBusMessageIter *args, DBusMessage *reply,
 	uint64_t read_bw, write_bw;
 	struct QoS_perClient_Class *client_qos;
 	DBusMessageIter iter;
-	bool success = true;
 	char *errormsg = "OK";
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_STRING, iter,
 				 "Invalid arg ClientIP");
 	client_ip = lookup_client(args, &errormsg);
-	if (client_ip == NULL) {
-		success = false;
-		errormsg = "Client IP address not found";
-		gsh_dbus_status_reply(&iter, success, errormsg);
-		return true;
-	}
+	CHECK_ARG_AND_RETURN(client_ip, iter, "Client IP address not found");
 
 	CHECK_DBUS_NEXT_ARG_OR_RETURN(args, DBUS_TYPE_UINT64, iter,
 				      "Invalid arg read_bw");
@@ -94,19 +124,13 @@ static bool dbus_qos_client_token_set(DBusMessageIter *args, DBusMessage *reply,
 	uint64_t token_renewal;
 	struct QoS_perClient_Class *client_qos;
 	DBusMessageIter iter;
-	bool success = true;
 	char *errormsg = "OK";
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_STRING, iter,
 				 "Invalid arg ClientIP");
 	client_ip = lookup_client(args, &errormsg);
-	if (client_ip == NULL) {
-		success = false;
-		errormsg = "Client IP address not found";
-		gsh_dbus_status_reply(&iter, success, errormsg);
-		return true;
-	}
+	CHECK_ARG_AND_RETURN(client_ip, iter, errormsg);
 
 	CHECK_DBUS_NEXT_ARG_OR_RETURN(args, DBUS_TYPE_UINT64, iter,
 				      "Invalid arg max_token");
@@ -134,19 +158,13 @@ static bool dbus_qos_client_token_get(DBusMessageIter *args, DBusMessage *reply,
 	struct gsh_client *client_ip;
 	struct QoS_perClient_Class *client_qos;
 	DBusMessageIter iter;
-	bool success = true;
 	char *errormsg = "OK";
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_STRING, iter,
 				 "Invalid arg ClientIP");
 	client_ip = lookup_client(args, &errormsg);
-	if (client_ip == NULL) {
-		success = false;
-		errormsg = "Client IP address not found";
-		gsh_dbus_status_reply(&iter, success, errormsg);
-		return true;
-	}
+	CHECK_ARG_AND_RETURN(client_ip, iter, errormsg);
 
 	client_qos = get_client_qos(&client_ip->cl_addrbuf);
 	if (client_qos) {
@@ -155,6 +173,7 @@ static bool dbus_qos_client_token_get(DBusMessageIter *args, DBusMessage *reply,
 			client_qos->read_bucket.max_available_tokens;
 		uint64_t token_renewal =
 			client_qos->read_bucket.tokens_renew_time;
+
 		PTHREAD_MUTEX_unlock(&client_qos->lock);
 
 		dbus_message_iter_append_basic(args, DBUS_TYPE_UINT32,
@@ -171,25 +190,20 @@ static bool dbus_qos_client_bw_get(DBusMessageIter *args, DBusMessage *reply,
 	struct gsh_client *client_ip;
 	struct QoS_perClient_Class *client_qos;
 	DBusMessageIter iter;
-	bool success = true;
 	char *errormsg = "OK";
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_STRING, iter,
 				 "Invalid arg ClientIP");
 	client_ip = lookup_client(args, &errormsg);
-	if (client_ip == NULL) {
-		success = false;
-		errormsg = "Client IP address not found";
-		gsh_dbus_status_reply(&iter, success, errormsg);
-		return true;
-	}
-	client_qos = get_client_qos(&client_ip->cl_addrbuf);
+	CHECK_ARG_AND_RETURN(client_ip, iter, errormsg);
 
+	client_qos = get_client_qos(&client_ip->cl_addrbuf);
 	if (client_qos) {
 		PTHREAD_MUTEX_lock(&client_qos->lock);
 		uint64_t read_bw = client_qos->read_bucket.max_bw_allowed;
 		uint64_t write_bw = client_qos->write_bucket.max_bw_allowed;
+
 		PTHREAD_MUTEX_unlock(&client_qos->lock);
 
 		dbus_message_iter_append_basic(args, DBUS_TYPE_UINT64,
@@ -287,9 +301,7 @@ static bool dbus_qos_pspc_clients_bw_list(DBusMessageIter *args,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (!share) {
@@ -310,6 +322,7 @@ static bool dbus_qos_pspc_clients_bw_list(DBusMessageIter *args,
 					 &iter_state.client_iter);
 
 	qos_client_t *client = share->clients;
+
 	while (client) {
 		client_qos_to_dbus(client, &iter_state);
 		client = client->next;
@@ -337,9 +350,7 @@ static bool dbus_qos_share_bw_get(DBusMessageIter *args, DBusMessage *reply,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (share) {
@@ -393,9 +404,7 @@ static bool dbus_qos_share_token_get(DBusMessageIter *args, DBusMessage *reply,
 
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (share) {
@@ -444,9 +453,8 @@ static bool dbus_qos_share_default_client_bw_get(DBusMessageIter *args,
 
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
+	if (!export)
 		return false;
-	}
 
 	share = get_share_qos(export);
 	if (share) {
@@ -456,13 +464,11 @@ static bool dbus_qos_share_default_client_bw_get(DBusMessageIter *args,
 		dbus_message_iter_open_container(&iter, DBUS_TYPE_STRUCT, NULL,
 						 &bw_struct);
 
-		//snprintf(read_bw_str, sizeof(read_bw_str), "%lu", share->max_client_rbw);
 		snprintf(read_bw_str, sizeof(read_bw_str), "%lu",
 			 export->qos_block->max_client_read_bw);
 		read_bw_ptr = read_bw_str;
-		//snprintf(write_bw_str, sizeof(write_bw_str), "%lu", share->max_client_wbw);
 		snprintf(write_bw_str, sizeof(write_bw_str), "%lu",
-			 export->qos_block->max_client_read_bw);
+			 export->qos_block->max_client_write_bw);
 		write_bw_ptr = write_bw_str;
 
 		dbus_message_iter_append_basic(&bw_struct, DBUS_TYPE_STRING,
@@ -489,16 +495,13 @@ static bool dbus_qos_share_bw_set(DBusMessageIter *args, DBusMessage *reply,
 	struct gsh_export *export;
 	qos_share_t *share;
 	DBusMessageIter iter;
-	bool success = true;
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	CHECK_DBUS_NEXT_ARG_OR_RETURN(args, DBUS_TYPE_UINT64, iter,
 				      "Invalid arg read_bw");
@@ -515,7 +518,7 @@ static bool dbus_qos_share_bw_set(DBusMessageIter *args, DBusMessage *reply,
 		PTHREAD_MUTEX_unlock(&share->lock);
 	}
 	put_gsh_export(export);
-	return success;
+	return true;
 }
 
 static bool dbus_qos_share_token_set(DBusMessageIter *args, DBusMessage *reply,
@@ -527,16 +530,13 @@ static bool dbus_qos_share_token_set(DBusMessageIter *args, DBusMessage *reply,
 	struct gsh_export *export;
 	qos_share_t *share;
 	DBusMessageIter iter;
-	bool success = true;
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	CHECK_DBUS_NEXT_ARG_OR_RETURN(args, DBUS_TYPE_UINT64, iter,
 				      "Invalid arg max_token");
@@ -555,7 +555,7 @@ static bool dbus_qos_share_token_set(DBusMessageIter *args, DBusMessage *reply,
 		PTHREAD_MUTEX_unlock(&share->lock);
 	}
 	put_gsh_export(export);
-	return success;
+	return true;
 }
 
 static bool dbus_qos_pspc_clients_bw_set(DBusMessageIter *args,
@@ -568,20 +568,14 @@ static bool dbus_qos_pspc_clients_bw_set(DBusMessageIter *args,
 	struct gsh_client *client_ip;
 	uint64_t read_bw, write_bw;
 	DBusMessageIter iter;
-	bool success = true;
 	char *errormsg = "OK";
 
-	// Get export ID
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		LogDebug(COMPONENT_EXPORT, "lookup_export failed with %s",
-			 errormsg);
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (!share) {
@@ -592,10 +586,7 @@ static bool dbus_qos_pspc_clients_bw_set(DBusMessageIter *args,
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_STRING, iter,
 				 "Invalid arg ClientIP");
 	client_ip = lookup_client(args, &errormsg);
-	if (client_ip == NULL) {
-		gsh_dbus_status_reply(&iter, success, errormsg);
-		return true;
-	}
+	CHECK_ARG_AND_RETURN(client_ip, iter, errormsg);
 
 	CHECK_DBUS_NEXT_ARG_OR_RETURN(args, DBUS_TYPE_UINT64, iter,
 				      "Invalid arg read_bw");
@@ -607,16 +598,16 @@ static bool dbus_qos_pspc_clients_bw_set(DBusMessageIter *args,
 	client = pspc_get_client_from_list(share->clients,
 					   &client_ip->cl_addrbuf);
 	if (client) {
-		PTHREAD_MUTEX_lock(&share->lock);
+		PTHREAD_MUTEX_lock(&client->lock);
 		client->bw_enabled = true;
 		client->read_bucket.max_bw_allowed = read_bw;
 		client->write_bucket.max_bw_allowed = write_bw;
-		PTHREAD_MUTEX_unlock(&share->lock);
+		PTHREAD_MUTEX_unlock(&client->lock);
 		return true;
 	}
 
 	put_gsh_export(export);
-	return success;
+	return true;
 }
 
 static bool dbus_qos_share_default_client_bw_set(DBusMessageIter *args,
@@ -628,20 +619,13 @@ static bool dbus_qos_share_default_client_bw_set(DBusMessageIter *args,
 	qos_share_t *share;
 	uint64_t read_bw, write_bw;
 	DBusMessageIter iter;
-	bool success = true;
-	char *errormsg = "OK";
 
-	// Get export ID
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		LogDebug(COMPONENT_EXPORT, "lookup_export failed with %s",
-			 errormsg);
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (!share) {
@@ -660,7 +644,7 @@ static bool dbus_qos_share_default_client_bw_set(DBusMessageIter *args,
 	export->qos_block->max_client_write_bw = write_bw;
 	put_gsh_export(export);
 
-	return success;
+	return true;
 }
 
 static bool dbus_qos_enable_bw_control_ps(DBusMessageIter *args,
@@ -670,20 +654,13 @@ static bool dbus_qos_enable_bw_control_ps(DBusMessageIter *args,
 	struct gsh_export *export;
 	qos_share_t *share;
 	DBusMessageIter iter;
-	bool success = true;
-	char *errormsg = "OK";
 
-	// Get export ID
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		LogDebug(COMPONENT_EXPORT, "lookup_export failed with %s",
-			 errormsg);
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (g_qos_config->enable_qos && g_qos_config->enable_bw_control &&
@@ -697,7 +674,7 @@ static bool dbus_qos_enable_bw_control_ps(DBusMessageIter *args,
 
 	put_gsh_export(export);
 
-	return success;
+	return true;
 }
 
 static bool dbus_qos_disable_bw_control_ps(DBusMessageIter *args,
@@ -707,20 +684,13 @@ static bool dbus_qos_disable_bw_control_ps(DBusMessageIter *args,
 	struct gsh_export *export;
 	qos_share_t *share;
 	DBusMessageIter iter;
-	bool success = true;
-	char *errormsg = "OK";
 
-	// Get export ID
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		LogDebug(COMPONENT_EXPORT, "lookup_export failed with %s",
-			 errormsg);
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (share) {
@@ -735,7 +705,7 @@ static bool dbus_qos_disable_bw_control_ps(DBusMessageIter *args,
 
 	put_gsh_export(export);
 
-	return success;
+	return true;
 }
 
 static bool dbus_qos_disable_bw_control_pspc(DBusMessageIter *args,
@@ -746,25 +716,19 @@ static bool dbus_qos_disable_bw_control_pspc(DBusMessageIter *args,
 	struct gsh_export *export;
 	qos_share_t *share;
 	DBusMessageIter iter;
-	bool success = true;
-	char *errormsg = "OK";
 
-	// Get export ID
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		LogDebug(COMPONENT_EXPORT, "lookup_export failed with %s",
-			 errormsg);
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (share) {
 		pthread_mutex_lock(&share->lock);
 		qos_client_t *client = share->clients;
+
 		while (client != NULL) {
 			qos_drain_bw_ios(client, QOS_CLIENT);
 			client = client->next;
@@ -779,7 +743,7 @@ static bool dbus_qos_disable_bw_control_pspc(DBusMessageIter *args,
 
 	put_gsh_export(export);
 
-	return success;
+	return true;
 }
 
 static bool dbus_qos_enable_bw_control_pspc(DBusMessageIter *args,
@@ -790,25 +754,19 @@ static bool dbus_qos_enable_bw_control_pspc(DBusMessageIter *args,
 	struct gsh_export *export;
 	qos_share_t *share;
 	DBusMessageIter iter;
-	bool success = true;
-	char *errormsg = "OK";
 
-	// Get export ID
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
 	export = get_gsh_export(export_id);
-	if (!export) {
-		LogDebug(COMPONENT_EXPORT, "lookup_export failed with %s",
-			 errormsg);
-		return false;
-	}
+	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
 
 	share = get_share_qos(export);
 	if (share) {
 		pthread_mutex_lock(&share->lock);
 		qos_client_t *client = share->clients;
+
 		while (client != NULL) {
 			client->bw_enabled = 1;
 			client = client->next;
@@ -823,7 +781,7 @@ static bool dbus_qos_enable_bw_control_pspc(DBusMessageIter *args,
 
 	put_gsh_export(export);
 
-	return success;
+	return true;
 }
 /* PerShare-PerClient implemnentation */
 
@@ -973,7 +931,6 @@ static struct gsh_dbus_method *qos_methods_pc[] = {
 static struct gsh_dbus_interface qos_interface = {
 	.name = "org.ganesha.nfsd.qos",
 	.props = NULL,
-	//	.methods = qos_methods,
 	.methods = NULL,
 	.signals = NULL
 };

@@ -1,29 +1,31 @@
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
 /*
- * =====================================================================================
+ * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
- *       Filename:  nfs_qosmgr.h
+ * Copyright (C) 2025, IBM . All rights reserved.
+ * Author: Deeraj Patil <deeraj.patil@ibm.com>
  *
- *    Description:
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
  *
- *        Version:  1.0
- *        Created:  11/22/2024 02:02:29 AM
- *       Revision:  none
- *       Compiler:  gcc
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- *         Author:  YOUR NAME (),
- *   Organization:
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA.  see <http://www.gnu.org/licenses/
  *
- * =====================================================================================
+ * ---------------------------------------
  */
+
+#include "gsh_dbus.h"
 void dbus_qosmgr_init(void);
 struct QoS_perClient_Class *get_client_qos(const sockaddr_t *client_ip);
 struct QoS_perShare_Class *get_share_qos(struct gsh_export *export);
-bool set_pspc_bandwidth(sockaddr_t *client_ip, struct gsh_export *export,
-			uint64_t read_bw, uint64_t write_bw);
-bool get_pspc_bandwidth(sockaddr_t *client_ip, struct gsh_export *export,
-			uint64_t *read_bw, uint64_t *write_bw);
-bool get_pspc_tokens(sockaddr_t *client_ip, struct gsh_export *export,
-		     uint64_t *max_tokens, uint64_t *token_renewal);
-bool set_pspc_tokens(sockaddr_t *client_ip, struct gsh_export *export,
-		     uint64_t max_tokens, uint64_t token_renewal);
 uint32_t get_share_client_count(struct QoS_perShare_Class *s_qos_class);
+extern struct gsh_client *lookup_client(DBusMessageIter *args, char **errormsg);

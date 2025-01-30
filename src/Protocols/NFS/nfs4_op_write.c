@@ -640,7 +640,7 @@ void nfs4_qos_write_cb(void *args)
 	uint32_t flags;
 
 	if (qos_cb_args->ratecontrol) {
-		/* Ratecontrol io, need to be resumed, should take default path */
+		/* BW io, need to be resumed, should take default path */
 		LogFullDebug(COMPONENT_QOS, "Ratecontrol IO exit write_data:%p",
 			     write_data);
 		write_data->res_WRITE4->status = NFS4_OK;
@@ -655,7 +655,8 @@ void nfs4_qos_write_cb(void *args)
 		write_data->res_WRITE4->status = NFS4ERR_DELAY;
 		flags = atomic_postset_uint32_t_bits(&write_data->flags,
 						     ASYNC_PROC_DONE);
-		/* Once testing is done no need of below block, directly call svc_resume */
+		/* Once testing is done no need of below block,
+		 * directly call svc_resume */
 		if ((flags & ASYNC_PROC_EXIT) == ASYNC_PROC_EXIT) {
 			svc_resume(write_data->data->req);
 		} else {

@@ -275,7 +275,7 @@ void nfs4_qos_read_cb(void *args)
 	uint32_t flags;
 
 	if (qos_cb_args->ratecontrol) {
-		/* Ratecontrol io, need to be resumed, should take default path  */
+		/* BW io, needs to be resumed, should take default path */
 		LogFullDebug(COMPONENT_QOS, "Ratecontrol IO exit read_data:%p",
 			     read_data);
 		read_data->res_READ4->status = NFS4_OK;
@@ -290,7 +290,8 @@ void nfs4_qos_read_cb(void *args)
 		read_data->res_READ4->status = NFS4ERR_DELAY;
 		flags = atomic_postset_uint32_t_bits(&read_data->flags,
 						     ASYNC_PROC_DONE);
-		/* Once testing is done no need of below block, directly call svc_resume */
+		/* Once testing is done no need of below block,
+		 * directly call svc_resume */
 		if ((flags & ASYNC_PROC_EXIT) == ASYNC_PROC_EXIT) {
 			svc_resume(read_data->data->req);
 		} else {
@@ -311,6 +312,7 @@ enum nfs_req_result nfs4_op_read_resume(struct nfs_argop4 *op,
 
 	if (read_data->qos_flag & IS_QOS_IO) {
 		bool bypass = read_data->qos_flag & IS_QOS_IO_READ_BYPASS;
+
 		read_data->qos_flag = 0;
 		LogFullDebug(COMPONENT_QOS, "qos_flag IO read nypass_value:%d",
 			     bypass);

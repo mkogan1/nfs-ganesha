@@ -1,3 +1,28 @@
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+/*
+ * vim:noexpandtab:shiftwidth=8:tabstop=8:
+ *
+ * Copyright (C) 2025, IBM . All rights reserved.
+ * Author: Deeraj Patil <deeraj.patil@ibm.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA.  see <http://www.gnu.org/licenses/
+ *
+ * ---------------------------------------
+ */
+
 #include <time.h>
 
 #define IS_QOS_IO (1 << 0)
@@ -113,6 +138,8 @@ typedef struct qos_block_config {
 	bool combined_rw_bw_control;
 	bool combined_rw_token_control;
 	int qos_type;
+	uint64_t max_export_combined_bw;
+	uint64_t max_client_combined_bw;
 	uint64_t max_export_write_bw;
 	uint64_t max_export_read_bw;
 	uint64_t max_client_write_bw;
@@ -130,6 +157,7 @@ typedef struct qos_block_config {
 
 extern qos_block_config_t qos_block_config;
 extern struct config_block qos_core;
+extern struct qos_block_config *g_qos_config;
 /* Structured for Future Generic Class implementation
 struct Qos_Class
 {
@@ -157,3 +185,6 @@ unsigned int QoS_Process(unsigned int size, void *caller_data,
 			 compound_data_t *data, unsigned int op_type);
 qos_client_t *pspc_get_client_from_list(qos_client_t *head,
 					sockaddr_t *client_addr);
+void copy_gsh_qos_mem(struct gsh_export *dest, struct gsh_export *src);
+void nfs4_qos_write_cb(void *args);
+void nfs4_qos_read_cb(void *args);
