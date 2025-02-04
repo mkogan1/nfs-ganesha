@@ -39,6 +39,7 @@
 char *nodeid;
 static bool takeover = false;
 static char object_takeover[NI_MAXHOST];
+static char object_takeover_old[NI_MAXHOST];
 static uint64_t rados_watch_cookie;
 
 static void rados_grace_watchcb(void *arg, uint64_t notify_id, uint64_t handle,
@@ -74,8 +75,7 @@ static int rados_cluster_init(void)
 			node_id = g_nodeid;
 		ret = snprintf(nodeid, maxlen, "node%d", node_id);
 		if (unlikely(ret >= maxlen)) {
-			LogCrit(COMPONENT_CLIENTID, "node%d too long",
-					node_id);
+			LogCrit(COMPONENT_CLIENTID, "node%d too long", node_id);
 			ret = -ENAMETOOLONG;
 			goto out_free_nodeid;
 		} else if (unlikely(ret < 0)) {
@@ -90,7 +90,7 @@ static int rados_cluster_init(void)
 		if (ret) {
 			ret = -errno;
 			LogCrit(COMPONENT_CLIENTID, "gethostname failed: %d",
-				 errno);
+				errno);
 			goto out_free_nodeid;
 		}
 	}
@@ -108,7 +108,7 @@ static int rados_cluster_init(void)
 				 nodeid);
 	if (ret < 0) {
 		LogCrit(COMPONENT_CLIENTID,
-			 "Cluster membership check failed: %d", ret);
+			"Cluster membership check failed: %d", ret);
 		goto out_shutdown;
 	}
 
@@ -118,7 +118,7 @@ static int rados_cluster_init(void)
 			   NULL);
 	if (ret < 0) {
 		LogCrit(COMPONENT_CLIENTID,
-			 "Failed to set watch on grace db: %d", ret);
+			"Failed to set watch on grace db: %d", ret);
 		goto out_shutdown;
 	}
 
@@ -156,12 +156,17 @@ static void rados_cluster_end_grace(void)
 
 	wop = rados_create_write_op();
 	rados_write_op_remove(wop);
-	if (!takeover)
+	if (!takeover) {
+		LogDebug(COMPONENT_CLIENTID, "Recovery object removed: %s",
+			 old_oid->gr_val);
 		ret = rados_write_op_operate(wop, rados_recov_io_ctx,
 					     old_oid->gr_val, NULL, 0);
-	else
+	} else {
+		LogDebug(COMPONENT_CLIENTID, "Recovery object removed: %s",
+			 object_takeover_old);
 		ret = rados_write_op_operate(wop, rados_recov_io_ctx,
-					     object_takeover, NULL, 0);
+					     object_takeover_old, NULL, 0);
+	}
 
 	if (ret) {
 		if (!takeover)
@@ -169,17 +174,16 @@ static void rados_cluster_end_grace(void)
 				 old_oid->gr_val, ret);
 		else
 			LogEvent(COMPONENT_CLIENTID, "Failed to remove %s: %d",
-				 object_takeover, ret);
+				 object_takeover_old, ret);
 	}
 
 	synchronize_rcu();
 	gsh_refstr_put(old_oid);
 }
 
-static void rados_cluster_read_clids_takeover(nfs_grace_start_t *gsp)
+static void set_recovery_object_for_takeover(nfs_grace_start_t *gsp)
 {
 	int ret;
-	takeover = true;
 
 	switch (gsp->event) {
 	case EVENT_TAKE_IP:
@@ -196,10 +200,10 @@ static void rados_cluster_read_clids_takeover(nfs_grace_start_t *gsp)
 		break;
 	case EVENT_TAKE_NODEID:
 		ret = snprintf(object_takeover, sizeof(object_takeover),
-			       "node%d_recov", gsp->nodeid);
+			       "node%d", gsp->nodeid);
 		if (unlikely(ret >= sizeof(object_takeover))) {
 			LogCrit(COMPONENT_CLIENTID,
-				"object_takeover too long %i_recov",
+				"Recovery object name too long: node%d",
 				gsp->nodeid);
 		} else if (unlikely(ret < 0)) {
 			LogCrit(COMPONENT_CLIENTID, "snprintf %d error %s (%d)",
@@ -211,6 +215,8 @@ static void rados_cluster_read_clids_takeover(nfs_grace_start_t *gsp)
 			"Recovery unknown/unsupported event %d", gsp->event);
 		return;
 	}
+
+	takeover = true;
 }
 
 static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
@@ -228,7 +234,7 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 	};
 
 	if (gsp) {
-		rados_cluster_read_clids_takeover(gsp);
+		set_recovery_object_for_takeover(gsp);
 	}
 
 	/* Start or join a grace period */
@@ -247,11 +253,16 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 	 */
 
 	/* FIXME: assert that rados_recov_oid is NULL? */
-	len = 4 + 16 + 1 + strlen(nodeid) + 1;
+	if (!takeover)
+		len = 4 + 16 + 1 + strlen(nodeid) + 1;
+	else
+		len = 4 + 16 + 1 + strlen(object_takeover) + 1;
 	recov_oid = gsh_refstr_alloc(len);
 
 	/* Can't overrun and shouldn't return EOVERFLOW or EINVAL */
 	(void)snprintf(recov_oid->gr_val, len, "rec-%16.16lx:%s", cur, nodeid);
+	LogDebug(COMPONENT_CLIENTID, "New recovery object %s",
+		 recov_oid->gr_val);
 	gsh_refstr_get(recov_oid);
 	rcu_set_pointer(&rados_recov_oid, recov_oid);
 
@@ -267,17 +278,24 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 		return;
 	};
 
-	old_oid = gsh_refstr_alloc(len);
-
-	/* Can't overrun and shouldn't return EOVERFLOW or EINVAL */
-	(void)snprintf(old_oid->gr_val, len, "rec-%16.16lx:%s", rec, nodeid);
-	rcu_set_pointer(&rados_recov_old_oid, old_oid);
-	if (!takeover)
+	if (!takeover) {
+		old_oid = gsh_refstr_alloc(len);
+		(void)snprintf(old_oid->gr_val, len, "rec-%16.16lx:%s", rec,
+			       nodeid);
+		LogDebug(COMPONENT_CLIENTID,
+			 "Recovery object for reclaim use %s", old_oid->gr_val);
+		rcu_set_pointer(&rados_recov_old_oid, old_oid);
 		ret = rados_kv_traverse(rados_ng_pop_clid_entry, &args,
 					old_oid->gr_val);
-	else
+	} else {
+		(void)snprintf(object_takeover_old, len, "rec-%16.16lx:%s", rec,
+			       object_takeover);
+		LogDebug(COMPONENT_CLIENTID,
+			 "Recovery object for reclaim use %s",
+			 object_takeover_old);
 		ret = rados_kv_traverse(rados_ng_pop_clid_entry, &args,
-					object_takeover);
+					object_takeover_old);
+	}
 	if (ret < 0)
 		LogEvent(COMPONENT_CLIENTID,
 			 "Failed to traverse recovery db: %d", ret);
