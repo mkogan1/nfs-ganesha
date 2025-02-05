@@ -68,7 +68,7 @@ static int rados_cluster_init(void)
 	nodeid = gsh_malloc(maxlen);
 
 	/* If no nodeid is specified, then use the hostname */
-	if (rados_kv_param.nodeid > 0) {
+	if (rados_kv_param.nodeid >= 0) {
 		node_id = rados_kv_param.nodeid;
 		/* check nodeid override with "I" option */
 		if (g_nodeid >= 0)

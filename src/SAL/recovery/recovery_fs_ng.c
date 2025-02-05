@@ -140,7 +140,7 @@ static int fs_ng_create_recov_dir(void)
 	}
 
 	/* Populate link path string */
-	if (nfs_param.core_param.clustered) {
+	if (nfs_param.core_param.clustered && (g_nodeid >= 0)) {
 		err = snprintf(host, sizeof(host), "node%d", g_nodeid);
 
 		if (unlikely(err >= sizeof(host))) {

@@ -747,7 +747,7 @@ int rados_kv_get_nodeid(char **pnodeid)
 	/* return the nodeid if we have one */
 	if (rados_kv_param.nodeid >= 0) {
 		nodeid = gsh_malloc(16); /* int max value is 11 digits */
-		ret = snprintf(nodeid, 15, "%d", rados_kv_param.nodeid);
+		ret = snprintf(nodeid, 15, "node%d", rados_kv_param.nodeid);
 		if (ret < 16 && ret > 0)
 			ret = 0;
 	}

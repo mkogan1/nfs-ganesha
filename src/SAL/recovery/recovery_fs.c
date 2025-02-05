@@ -159,7 +159,7 @@ int fs_create_recov_dir(void)
 	 *              the terminating NUL.
 	 */
 
-	if (nfs_param.core_param.clustered) {
+	if (nfs_param.core_param.clustered && (g_nodeid >= 0)) {
 		node_size = snprintf(node, sizeof(node), "/node%d", g_nodeid);
 
 		if (unlikely(node_size >= sizeof(node) || node_size < 0)) {
