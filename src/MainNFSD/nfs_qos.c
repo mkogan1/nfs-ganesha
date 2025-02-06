@@ -1959,7 +1959,7 @@ bool ps_bw_control_cb(struct gsh_export *export, void *state)
 	qos_share_t *share = get_share_qos(export);
 
 	if (share && share->bw_enabled) {
-		print_all_io_details(share, *(unsigned int *)state, QOS_CLIENT,
+		print_all_io_details(share, *(unsigned int *)state, QOS_SHARE,
 				     __func__);
 		resume_bw_io_ps(share, *(unsigned int *)state);
 	}
@@ -1971,7 +1971,7 @@ bool pc_bw_control_cb(struct gsh_client *cl, void *state)
 	qos_client_t *client = get_client_qos(cl);
 
 	if (client && client->bw_enabled) {
-		print_all_io_details(client, *(unsigned int *)state, QOS_SHARE,
+		print_all_io_details(client, *(unsigned int *)state, QOS_CLIENT,
 				     __func__);
 		resume_bw_io_pc(client, *(unsigned int *)state);
 	}
