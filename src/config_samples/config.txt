@@ -265,6 +265,8 @@ NFSV4 {}
 	RecoveryBackend(enum, values [fs, fs_ng, rados_kv, rados_ng],
 			default fs)
 
+	RecoveryBackendIPBased(bool, default false)
+
 	RecoveryRoot(path, default "/var/lib/nfs/ganesha")
 
 	RecoveryDir(path, default "v4recov")

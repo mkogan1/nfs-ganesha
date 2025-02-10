@@ -499,6 +499,14 @@ RecoveryBackend(enum, default "fs")
     - rados_ng : rados key-value (better resiliency)
     - rados_cluster: clustered rados backend (active/active)
 
+RecoveryBackendIPBased(bool, default false)
+    Whether recovery backend to be used is based on the IP hosted by that
+    Ganesha instance.
+    By default the recovery backend is based on the node name / node id. The IP
+    based recovery backend will help in assigning / removing IPs to Ganesha
+    instances on the fly. Useful in case of virtual/floating IPs are in use and
+    which need to be moved across for HA purpose.
+
 RecoveryRoot(path, default "/var/lib/nfs/ganesha")
     Specify the root recovery directory for fs or fs_ng recovery backends.
 

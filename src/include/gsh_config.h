@@ -662,6 +662,8 @@ typedef struct nfs_version4_parameter {
 	bool pnfs_ds;
 	/** Recovery backend */
 	enum recovery_backend recovery_backend;
+	/** Whether Recovery backend is IP based */
+	bool recovery_backend_ipbased;
 	/** List of supported NFSV4 minor versions */
 	unsigned int minor_versions;
 	/** Number of allowed slots in the 4.1 slot table */
