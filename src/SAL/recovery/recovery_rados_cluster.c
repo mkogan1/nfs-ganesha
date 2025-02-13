@@ -38,9 +38,14 @@
 /* Use hostname as nodeid in cluster */
 char *nodeid;
 static bool takeover = false;
+/* recovery rados object names for takeover */
 static char object_takeover[NI_MAXHOST];
 static char object_takeover_old[NI_MAXHOST];
+/* recovery rados object name for IP based backend */
+static char object_ipbased[NI_MAXHOST];
 static uint64_t rados_watch_cookie;
+static int addr_int; /* IP address in int format */
+uint64_t cur, rec;
 
 static void rados_grace_watchcb(void *arg, uint64_t notify_id, uint64_t handle,
 				uint64_t notifier_id, void *data,
@@ -58,6 +63,32 @@ static void rados_grace_watchcb(void *arg, uint64_t notify_id, uint64_t handle,
 	/* Now kick the reaper to check things out */
 	nfs_notify_grace_waiters();
 	reaper_wake();
+}
+
+/* Convert an IP address from string format to int32 */
+static int ip_str_to_int(char *ip_str)
+{
+	unsigned char cl_addrbuf[sizeof(struct in6_addr)];
+	sockaddr_t sp;
+	int addr = 0;
+
+	if (inet_pton(AF_INET, ip_str, cl_addrbuf) == 1) {
+		sp.ss_family = AF_INET;
+		memcpy(&((struct sockaddr_in *)&sp)->sin_addr, cl_addrbuf,
+		       sizeof(struct in_addr));
+		addr = ntohl(((struct sockaddr_in *)&sp)->sin_addr.s_addr);
+	} else if (inet_pton(AF_INET6, ip_str, cl_addrbuf) == 1) {
+		sp.ss_family = AF_INET6;
+		memcpy(&((struct sockaddr_in6 *)&sp)->sin6_addr, cl_addrbuf,
+		       sizeof(struct in6_addr));
+		void *ab =
+			&(((struct sockaddr_in6 *)&sp)->sin6_addr.s6_addr[12]);
+		addr = ntohl(*(uint32_t *)ab);
+	} else {
+		LogCrit(COMPONENT_CLIENTID, "Unable to validate the IP : %s",
+			ip_str);
+	}
+	return addr;
 }
 
 static int rados_cluster_init(void)
@@ -92,6 +123,22 @@ static int rados_cluster_init(void)
 			LogCrit(COMPONENT_CLIENTID, "gethostname failed: %d",
 				errno);
 			goto out_free_nodeid;
+		}
+	}
+
+	/* Form the recovery object name if IP Based recovery is enabled */
+	if (nfs_param.nfsv4_param.recovery_backend_ipbased) {
+		if (g_node_vip) {
+			addr_int = ip_str_to_int(g_node_vip);
+			ret = snprintf(object_ipbased, maxlen, "ip_%d",
+				       addr_int);
+			if (unlikely(ret >= maxlen) || unlikely(ret < 0))
+				LogCrit(COMPONENT_CLIENTID,
+					"Error while creating object name (IP based)");
+		} else {
+			/* IP address not provided, failback to nodeid based
+			 * recovery mechanism */
+			nfs_param.nfsv4_param.recovery_backend_ipbased = false;
 		}
 	}
 
@@ -140,7 +187,6 @@ static void rados_cluster_end_grace(void)
 {
 	int ret;
 	rados_write_op_t wop;
-	uint64_t cur, rec;
 	struct gsh_refstr *old_oid;
 
 	old_oid = rcu_xchg_pointer(&rados_recov_old_oid, NULL);
@@ -181,14 +227,62 @@ static void rados_cluster_end_grace(void)
 	gsh_refstr_put(old_oid);
 }
 
+void rados_cluster_add_clid(nfs_client_id_t *clientid)
+{
+	struct gsh_refstr *recov_oid;
+	char rec_obj[NI_MAXHOST];
+
+	if (nfs_param.nfsv4_param.recovery_backend_ipbased) {
+		/* Use IP based recovery DB for storing client info */
+		(void)snprintf(rec_obj, NI_MAXHOST - 1, "rec-%16.16lx:ip_%d",
+			       cur,
+			       clientid->cid_client_record->cr_server_addr);
+		rados_kv_add_clid_impl(clientid, rec_obj);
+	} else {
+		rcu_read_lock();
+		recov_oid = gsh_refstr_get(rcu_dereference(rados_recov_oid));
+		rcu_read_unlock();
+		rados_kv_add_clid_impl(clientid, recov_oid->gr_val);
+		gsh_refstr_put(recov_oid);
+	}
+}
+
+void rados_cluster_rm_clid(nfs_client_id_t *clientid)
+{
+	struct gsh_refstr *recov_oid;
+	char rec_obj[NI_MAXHOST];
+
+	if (nfs_param.nfsv4_param.recovery_backend_ipbased) {
+		/* Use IP based recovery DB for storing client info */
+		(void)snprintf(rec_obj, NI_MAXHOST - 1, "rec-%16.16lx:ip_%d",
+			       cur,
+			       clientid->cid_client_record->cr_server_addr);
+		rados_kv_rm_clid_impl(clientid, rec_obj);
+	} else {
+		rcu_read_lock();
+		recov_oid = gsh_refstr_get(rcu_dereference(rados_recov_oid));
+		rcu_read_unlock();
+		rados_kv_rm_clid_impl(clientid, recov_oid->gr_val);
+		gsh_refstr_put(recov_oid);
+	}
+}
+
 static void set_recovery_object_for_takeover(nfs_grace_start_t *gsp)
 {
 	int ret;
+	int take_addr;
 
+	takeover = false;
 	switch (gsp->event) {
 	case EVENT_TAKE_IP:
+		if (!nfs_param.nfsv4_param.recovery_backend_ipbased) {
+			LogCrit(COMPONENT_CLIENTID,
+				"No takeover, IP based recovery mechanism not enabled.");
+			break;
+		}
+		take_addr = ip_str_to_int(gsp->ipaddr);
 		ret = snprintf(object_takeover, sizeof(object_takeover),
-			       "%s_recov", gsp->ipaddr);
+			       "ip_%d", take_addr);
 		if (unlikely(ret >= sizeof(object_takeover))) {
 			LogCrit(COMPONENT_CLIENTID,
 				"object_takeover too long %s_recov",
@@ -196,9 +290,15 @@ static void set_recovery_object_for_takeover(nfs_grace_start_t *gsp)
 		} else if (unlikely(ret < 0)) {
 			LogCrit(COMPONENT_CLIENTID, "snprintf %d error %s (%d)",
 				ret, strerror(errno), errno);
-		}
+		} else
+			takeover = true;
 		break;
 	case EVENT_TAKE_NODEID:
+		if (nfs_param.nfsv4_param.recovery_backend_ipbased) {
+			LogCrit(COMPONENT_CLIENTID,
+				"No takeover, Nodeid based recovery mechanism not enabled.");
+			break;
+		}
 		ret = snprintf(object_takeover, sizeof(object_takeover),
 			       "node%d", gsp->nodeid);
 		if (unlikely(ret >= sizeof(object_takeover))) {
@@ -208,15 +308,14 @@ static void set_recovery_object_for_takeover(nfs_grace_start_t *gsp)
 		} else if (unlikely(ret < 0)) {
 			LogCrit(COMPONENT_CLIENTID, "snprintf %d error %s (%d)",
 				ret, strerror(errno), errno);
-		}
+		} else
+			takeover = true;
 		break;
 	default:
 		LogWarn(COMPONENT_CLIENTID,
 			"Recovery unknown/unsupported event %d", gsp->event);
 		return;
 	}
-
-	takeover = true;
 }
 
 static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
@@ -224,8 +323,7 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 				     add_rfh_entry_hook add_rfh_entry)
 {
 	int ret;
-	size_t len;
-	uint64_t cur, rec;
+	size_t new_len, old_len;
 	rados_write_op_t wop;
 	struct gsh_refstr *recov_oid, *old_oid;
 	struct pop_args args = {
@@ -233,9 +331,8 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 		.add_rfh_entry = add_rfh_entry,
 	};
 
-	if (gsp) {
+	if (gsp && (gsp->event != EVENT_JUST_GRACE))
 		set_recovery_object_for_takeover(gsp);
-	}
 
 	/* Start or join a grace period */
 	ret = rados_grace_join(rados_recov_io_ctx, rados_kv_param.grace_oid,
@@ -247,20 +344,31 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 	}
 
 	/*
-	 * Recovery db names are "rec-cccccccccccccccc:hostname"
+	 * Recovery db names are like "rec-cccccccccccccccc:hostname" OR
+	 * "rec-cccccccccccccccc:node<nodeid>" OR
+	 * "rec-cccccccccccccccc:ip_<addr_in_int>"
 	 *
 	 * "rec-" followed by epoch in 16 hex digits + nodeid.
 	 */
 
-	/* FIXME: assert that rados_recov_oid is NULL? */
-	if (!takeover)
-		len = 4 + 16 + 1 + strlen(nodeid) + 1;
+	/* calculate the recovery objects length */
+	if (nfs_param.nfsv4_param.recovery_backend_ipbased)
+		new_len = 4 + 16 + 1 + strlen(object_ipbased) + 1;
 	else
-		len = 4 + 16 + 1 + strlen(object_takeover) + 1;
-	recov_oid = gsh_refstr_alloc(len);
+		new_len = 4 + 16 + 1 + strlen(nodeid) + 1;
+	if (!takeover)
+		old_len = new_len;
+	else
+		old_len = 4 + 16 + 1 + strlen(object_takeover) + 1;
+	recov_oid = gsh_refstr_alloc(new_len);
 
-	/* Can't overrun and shouldn't return EOVERFLOW or EINVAL */
-	(void)snprintf(recov_oid->gr_val, len, "rec-%16.16lx:%s", cur, nodeid);
+	/* Create new recovery object for current epoch */
+	if (nfs_param.nfsv4_param.recovery_backend_ipbased)
+		(void)snprintf(recov_oid->gr_val, new_len, "rec-%16.16lx:%s",
+			       cur, object_ipbased);
+	else
+		(void)snprintf(recov_oid->gr_val, new_len, "rec-%16.16lx:%s",
+			       cur, nodeid);
 	LogDebug(COMPONENT_CLIENTID, "New recovery object %s",
 		 recov_oid->gr_val);
 	gsh_refstr_get(recov_oid);
@@ -278,18 +386,23 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 		return;
 	};
 
+	/* Read from the recovery object targeted for reclaim */
 	if (!takeover) {
-		old_oid = gsh_refstr_alloc(len);
-		(void)snprintf(old_oid->gr_val, len, "rec-%16.16lx:%s", rec,
-			       nodeid);
+		old_oid = gsh_refstr_alloc(old_len);
+		if (nfs_param.nfsv4_param.recovery_backend_ipbased)
+			(void)snprintf(old_oid->gr_val, old_len,
+				       "rec-%16.16lx:%s", rec, object_ipbased);
+		else
+			(void)snprintf(old_oid->gr_val, old_len,
+				       "rec-%16.16lx:%s", rec, nodeid);
 		LogDebug(COMPONENT_CLIENTID,
 			 "Recovery object for reclaim use %s", old_oid->gr_val);
 		rcu_set_pointer(&rados_recov_old_oid, old_oid);
 		ret = rados_kv_traverse(rados_ng_pop_clid_entry, &args,
 					old_oid->gr_val);
 	} else {
-		(void)snprintf(object_takeover_old, len, "rec-%16.16lx:%s", rec,
-			       object_takeover);
+		(void)snprintf(object_takeover_old, old_len, "rec-%16.16lx:%s",
+			       rec, object_takeover);
 		LogDebug(COMPONENT_CLIENTID,
 			 "Recovery object for reclaim use %s",
 			 object_takeover_old);
@@ -304,7 +417,6 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 static bool rados_cluster_try_lift_grace(void)
 {
 	int ret;
-	uint64_t cur, rec;
 
 	ret = rados_grace_lift(rados_recov_io_ctx, rados_kv_param.grace_oid,
 			       nodeid, &cur, &rec);
@@ -368,7 +480,6 @@ static void rados_cluster_maybe_start_grace(void)
 	size_t len;
 	nfs_grace_start_t gsp = { .event = EVENT_JUST_GRACE };
 	rados_write_op_t wop;
-	uint64_t cur, rec;
 	struct gsh_refstr *recov_oid, *old_oid, *prev_recov_oid;
 	char *keys[RADOS_KV_STARTING_SLOTS];
 	char *vals[RADOS_KV_STARTING_SLOTS];
@@ -399,20 +510,33 @@ static void rados_cluster_maybe_start_grace(void)
 	 */
 
 	/* Allocate new oid string and xchg it into place */
-	len = 4 + 16 + 1 + strlen(nodeid) + 1;
+	if (nfs_param.nfsv4_param.recovery_backend_ipbased)
+		len = 4 + 16 + 1 + strlen(object_ipbased) + 1;
+	else
+		len = 4 + 16 + 1 + strlen(nodeid) + 1;
 	recov_oid = gsh_refstr_alloc(len);
 
 	/* Get an extra working reference of new string */
 	gsh_refstr_get(recov_oid);
 
 	/* Can't overrun and shouldn't return EOVERFLOW or EINVAL */
-	(void)snprintf(recov_oid->gr_val, len, "rec-%16.16lx:%s", cur, nodeid);
+	if (nfs_param.nfsv4_param.recovery_backend_ipbased)
+		(void)snprintf(recov_oid->gr_val, len, "rec-%16.16lx:%s", cur,
+			       object_ipbased);
+	else
+		(void)snprintf(recov_oid->gr_val, len, "rec-%16.16lx:%s", cur,
+			       nodeid);
 	prev_recov_oid = rcu_xchg_pointer(&rados_recov_oid, recov_oid);
 
 	old_oid = gsh_refstr_alloc(len);
 
 	/* Can't overrun and shouldn't return EOVERFLOW or EINVAL */
-	(void)snprintf(old_oid->gr_val, len, "rec-%16.16lx:%s", rec, nodeid);
+	if (nfs_param.nfsv4_param.recovery_backend_ipbased)
+		(void)snprintf(old_oid->gr_val, len, "rec-%16.16lx:%s", rec,
+			       object_ipbased);
+	else
+		(void)snprintf(old_oid->gr_val, len, "rec-%16.16lx:%s", rec,
+			       nodeid);
 	old_oid = rcu_xchg_pointer(&rados_recov_old_oid, old_oid);
 
 	synchronize_rcu();
@@ -452,7 +576,6 @@ static void rados_cluster_maybe_start_grace(void)
 static void rados_cluster_shutdown(void)
 {
 	int ret;
-	uint64_t cur, rec;
 
 	/*
 	 * Request grace on clean shutdown to minimize the chance that we'll
@@ -480,7 +603,6 @@ static void rados_cluster_shutdown(void)
 static void rados_cluster_set_enforcing(void)
 {
 	int ret;
-	uint64_t cur, rec;
 
 	ret = rados_grace_enforcing_on(rados_recov_io_ctx,
 				       rados_kv_param.grace_oid, nodeid, &cur,
@@ -524,8 +646,8 @@ struct nfs4_recovery_backend rados_cluster_backend = {
 	.recovery_shutdown = rados_cluster_shutdown,
 	.recovery_read_clids = rados_cluster_read_clids,
 	.end_grace = rados_cluster_end_grace,
-	.add_clid = rados_kv_add_clid,
-	.rm_clid = rados_kv_rm_clid,
+	.add_clid = rados_cluster_add_clid,
+	.rm_clid = rados_cluster_rm_clid,
 	.add_revoke_fh = rados_kv_add_revoke_fh,
 	.maybe_start_grace = rados_cluster_maybe_start_grace,
 	.try_lift_grace = rados_cluster_try_lift_grace,

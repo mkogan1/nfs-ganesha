@@ -171,6 +171,7 @@ void admin_halt(void);
 /* Tools */
 
 int compare_state_id(struct gsh_buffdesc *buff1, struct gsh_buffdesc *buff2);
+int get_raddr(SVCXPRT *xprt);
 
 /* used in DBUS-api diagnostic functions (e.g., serialize sessionid) */
 int b64_ntop(u_char const *src, size_t srclength, char *target,

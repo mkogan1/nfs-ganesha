@@ -55,8 +55,7 @@ static struct config_item rados_kv_params[] = {
 		      namespace),
 	CONF_ITEM_STR("grace_oid", 1, NI_MAXHOST, DEFAULT_RADOS_GRACE_OID,
 		      rados_kv_parameter, grace_oid),
-	CONF_ITEM_I32("nodeid", 0, INT32_MAX, -1, rados_kv_parameter,
-		      nodeid),
+	CONF_ITEM_I32("nodeid", 0, INT32_MAX, -1, rados_kv_parameter, nodeid),
 	CONFIG_EOL
 };
 
@@ -421,8 +420,7 @@ int rados_kv_init(void)
 		ret = snprintf(host, sizeof(host), "node%d", node_id);
 
 		if (unlikely(ret >= sizeof(host))) {
-			LogCrit(COMPONENT_CLIENTID, "node%d too long",
-				node_id);
+			LogCrit(COMPONENT_CLIENTID, "node%d too long", node_id);
 			return -ENAMETOOLONG;
 		} else if (unlikely(ret < 0)) {
 			ret = errno;
@@ -436,8 +434,8 @@ int rados_kv_init(void)
 		if (ret) {
 			ret = errno;
 			LogCrit(COMPONENT_CLIENTID,
-				 "Failed to gethostname: %s (%d)",
-				 strerror(ret), ret);
+				"Failed to gethostname: %s (%d)", strerror(ret),
+				ret);
 			return -ret;
 		}
 	}
@@ -504,21 +502,16 @@ out:
 	return ret;
 }
 
-void rados_kv_add_clid(nfs_client_id_t *clientid)
+void rados_kv_add_clid_impl(nfs_client_id_t *clientid, char *recov_obj)
 {
 	char ckey[RADOS_KEY_MAX_LEN];
 	char *cval;
-	struct gsh_refstr *recov_oid;
 	int ret;
 
+	LogDebug(COMPONENT_CLIENTID, "Recovery object in use : %s", recov_obj);
 	rados_kv_create_key(clientid, ckey, sizeof(ckey));
 	cval = rados_kv_create_val(clientid, NULL);
-
-	rcu_read_lock();
-	recov_oid = gsh_refstr_get(rcu_dereference(rados_recov_oid));
-	rcu_read_unlock();
-	ret = rados_kv_put(ckey, cval, recov_oid->gr_val);
-	gsh_refstr_put(recov_oid);
+	ret = rados_kv_put(ckey, cval, recov_obj);
 	if (ret < 0) {
 		LogEvent(COMPONENT_CLIENTID, "Failed to add clid %lu",
 			 clientid->cid_clientid);
@@ -528,27 +521,43 @@ void rados_kv_add_clid(nfs_client_id_t *clientid)
 	}
 }
 
-void rados_kv_rm_clid(nfs_client_id_t *clientid)
+void rados_kv_add_clid(nfs_client_id_t *clientid)
 {
-	char ckey[RADOS_KEY_MAX_LEN];
 	struct gsh_refstr *recov_oid;
-	int ret;
-
-	rados_kv_create_key(clientid, ckey, sizeof(ckey));
 
 	rcu_read_lock();
 	recov_oid = gsh_refstr_get(rcu_dereference(rados_recov_oid));
 	rcu_read_unlock();
-	ret = rados_kv_del(ckey, recov_oid->gr_val);
+	rados_kv_add_clid_impl(clientid, recov_oid->gr_val);
 	gsh_refstr_put(recov_oid);
+}
+
+void rados_kv_rm_clid_impl(nfs_client_id_t *clientid, char *recov_obj)
+{
+	char ckey[RADOS_KEY_MAX_LEN];
+	int ret;
+
+	LogDebug(COMPONENT_CLIENTID, "Recovery object in use : %s", recov_obj);
+	rados_kv_create_key(clientid, ckey, sizeof(ckey));
+	ret = rados_kv_del(ckey, recov_obj);
 	if (ret < 0) {
 		LogEvent(COMPONENT_CLIENTID, "Failed to del clid %lu",
 			 clientid->cid_clientid);
 		return;
 	}
-
 	free(clientid->cid_recov_tag);
 	clientid->cid_recov_tag = NULL;
+}
+
+void rados_kv_rm_clid(nfs_client_id_t *clientid)
+{
+	struct gsh_refstr *recov_oid;
+
+	rcu_read_lock();
+	recov_oid = gsh_refstr_get(rcu_dereference(rados_recov_oid));
+	rcu_read_unlock();
+	rados_kv_rm_clid_impl(clientid, recov_oid->gr_val);
+	gsh_refstr_put(recov_oid);
 }
 
 static void rados_kv_pop_clid_entry(char *key, char *val, size_t val_len,

@@ -67,7 +67,9 @@ void rados_kv_shutdown(void);
 int rados_kv_put(char *key, char *val, char *object);
 int rados_kv_get(char *key, char *val, char *object);
 void rados_kv_add_clid(nfs_client_id_t *clientid);
+void rados_kv_add_clid_impl(nfs_client_id_t *clientid, char *rados_obj);
 void rados_kv_rm_clid(nfs_client_id_t *clientid);
+void rados_kv_rm_clid_impl(nfs_client_id_t *clientid, char *rados_obj);
 void rados_kv_add_revoke_fh(nfs_client_id_t *delr_clid, nfs_fh4 *delr_handle);
 
 /**
