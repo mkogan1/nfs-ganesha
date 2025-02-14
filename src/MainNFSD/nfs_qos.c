@@ -81,6 +81,8 @@ static inline qos_bucket_t *qos_get_token_bucket(void *entry,
 						 unsigned int op_type);
 static inline qos_bucket_t *
 qos_get_bw_bucket(void *entry, unsigned int class_type, unsigned int op_type);
+static inline qos_bucket_t *
+qos_get_iops_bucket(void *entry, unsigned int class_type, unsigned int op_type);
 static inline void qos_bw_bucket_deffer_task(qos_bucket_t *bucket,
 					     void *caller_data,
 					     uint64_t timeout, uint64_t size,
@@ -94,7 +96,11 @@ qos_client_t *pspc_remove_client_from_list(qos_client_t **head,
 
 qos_share_t *get_share_qos(struct gsh_export *export);
 qos_client_t *get_client_qos(struct gsh_client *client);
-
+static inline void resume_iops_ps(qos_share_t *share, unsigned int op_type);
+static inline void resume_iops_pc(qos_client_t *client, unsigned int op_type);
+static inline void pspc_reschedule_iops(qos_share_t *share,
+					unsigned int op_type);
+static inline void resume_iops_pspc(qos_share_t *share, unsigned int op_type);
 #define THREAD_DELAY_NFS_ERR_DELAY_DEFAULT 15
 #define THREAD_DELAY_NFS_ERR_DELAY_IMMED 1
 
@@ -107,6 +113,8 @@ qos_block_config_t qos_block_config;
 qos_block_config_t *g_qos_config = (qos_block_config_t *)&qos_block_config;
 
 #define DELAY_MSEC 1000
+#define USEC_IN_SEC (1000 * 1000)
+
 #define BW_DELAY_MSEC 2
 #define BW_DELAY_USEC (BW_DELAY_MSEC * 1000)
 
@@ -122,6 +130,11 @@ qos_block_config_t *g_qos_config = (qos_block_config_t *)&qos_block_config;
 
 /*  Indicates token refersh should happen every 1 sec */
 #define TOKEN_REFRESH_DELAY (DELAY_MSEC / BW_DELAY_MSEC)
+
+#define IOPS_DELAY_MSEC 5
+#define IOPS_DELAY_USEC (BW_DELAY_MSEC * 1000)
+#define IOPS_SHARE_FW_IO_SCHEDULE (IOPS_DELAY_USEC * 5)
+#define IOPS_CLIENT_FW_IO_SCHEDULE (IOPS_SHARE_FW_IO_SCHEDULE * 5)
 
 pthread_mutex_t g_qos_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -139,19 +152,20 @@ static inline void qos_drain_token_ios(void *qos_class,
 		num_ios_waiting =
 			&(((qos_share_t *)qos_class)->num_ios_waiting);
 
+		LogFullDebug(COMPONENT_QOS, "draining share:%d",
+			     ((qos_share_t *)qos_class)->share_id);
 	} else {
 		token_enabled = ((qos_client_t *)qos_class)->token_enabled;
 		token_client = ((qos_client_t *)qos_class)->client_entries;
 		num_ios_waiting =
 			&(((qos_client_t *)qos_class)->num_ios_waiting);
+
+		LogFullDebug(COMPONENT_QOS, "draining client:%p",
+			     ((qos_client_t *)qos_class)->client_addr);
 	}
 	if (token_enabled && token_client != NULL) {
 		while (token_client != NULL) {
 			temp = token_client->next;
-			LogFullDebug(COMPONENT_QOS,
-				     "token clients present:%d:%p:%d",
-				     g_qos_config->qos_type, token_client,
-				     token_client->num_ios_waiting);
 			release_wait_ios(&(token_client->io_waitlist_qos),
 					 num_ios_waiting,
 					 &(token_client->num_ios_waiting));
@@ -172,9 +186,15 @@ void qos_drain_bw_ios(void *qos_class, unsigned int qos_class_type)
 	if (qos_class_type == QOS_SHARE) {
 		bw_enabled = ((qos_share_t *)qos_class)->bw_enabled;
 		((qos_share_t *)qos_class)->bw_enabled = 0;
+
+		LogFullDebug(COMPONENT_QOS, "draining share:%d",
+			     ((qos_share_t *)qos_class)->share_id);
 	} else {
 		bw_enabled = ((qos_client_t *)qos_class)->bw_enabled;
 		((qos_client_t *)qos_class)->bw_enabled = 0;
+
+		LogFullDebug(COMPONENT_QOS, "draining client:%p",
+			     ((qos_client_t *)qos_class)->client_addr);
 	}
 
 	if (bw_enabled) {
@@ -189,6 +209,50 @@ void qos_drain_bw_ios(void *qos_class, unsigned int qos_class_type)
 					 &dummy_counter);
 		}
 	}
+}
+
+void qos_drain_iops_ios(void *qos_class, unsigned int qos_class_type)
+{
+	bool iops_enabled = false;
+	qos_bucket_t *rbucket =
+		qos_get_iops_bucket(qos_class, qos_class_type, QOS_READ);
+	qos_bucket_t *wbucket =
+		qos_get_iops_bucket(qos_class, qos_class_type, QOS_WRITE);
+	int dummy_counter = 0;
+
+	if (qos_class_type == QOS_SHARE) {
+		iops_enabled = ((qos_share_t *)qos_class)->iops_enabled;
+		((qos_share_t *)qos_class)->iops_enabled = 0;
+
+		LogFullDebug(COMPONENT_QOS, "draining share:%d",
+			     ((qos_share_t *)qos_class)->share_id);
+	} else {
+		iops_enabled = ((qos_client_t *)qos_class)->iops_enabled;
+		((qos_client_t *)qos_class)->iops_enabled = 0;
+
+		LogFullDebug(COMPONENT_QOS, "draining client:%p",
+			     ((qos_client_t *)qos_class)->client_addr);
+	}
+
+	if (iops_enabled) {
+		if (rbucket->io_waitlist_qos_iops != NULL) {
+			release_wait_ios(&(rbucket->io_waitlist_qos_iops),
+					 &(rbucket->num_ios_waiting),
+					 &dummy_counter);
+		}
+		if (wbucket->io_waitlist_qos_iops != NULL) {
+			release_wait_ios(&(wbucket->io_waitlist_qos_iops),
+					 &(wbucket->num_ios_waiting),
+					 &dummy_counter);
+		}
+	}
+}
+
+void qos_drain_ios(void *qos_class, unsigned int qos_class_type)
+{
+	qos_drain_token_ios(qos_class, qos_class_type);
+	qos_drain_bw_ios(qos_class, qos_class_type);
+	qos_drain_iops_ios(qos_class, qos_class_type);
 }
 
 bool pspc_per_export_free_mem_cb(struct gsh_export *export, void *state)
@@ -207,10 +271,9 @@ bool pspc_per_export_free_mem_cb(struct gsh_export *export, void *state)
 
 	if (c_qos_class != NULL) {
 		LogFullDebug(COMPONENT_QOS,
-			     "Tried freeing client:%d from export mem :%p",
+			     "freeing client:%d from export mem :%p",
 			     export->qos_class->share_id, (sockaddr_t *)state);
-		qos_drain_token_ios(c_qos_class, QOS_CLIENT);
-		qos_drain_bw_ios(c_qos_class, QOS_CLIENT);
+		qos_drain_ios(c_qos_class, QOS_CLIENT);
 		gsh_free(c_qos_class);
 	} else {
 		LogFullDebug(COMPONENT_QOS,
@@ -237,8 +300,7 @@ void qos_free_mem(void *gsh_ptr, unsigned int qos_class_type)
 	switch (g_qos_config->qos_type) {
 	case QOS_PS_ENABLED:
 		if (qos_class_type == QOS_SHARE) {
-			qos_drain_token_ios(export->qos_class, QOS_SHARE);
-			qos_drain_bw_ios(export->qos_class, QOS_SHARE);
+			qos_drain_ios(export->qos_class, QOS_SHARE);
 			LogFullDebug(COMPONENT_QOS, "freeing export mem :%d",
 				     export->qos_class->share_id);
 			gsh_free(export->qos_class);
@@ -250,8 +312,7 @@ void qos_free_mem(void *gsh_ptr, unsigned int qos_class_type)
 		if (qos_class_type == QOS_CLIENT && client->qos_class != NULL) {
 			LogFullDebug(COMPONENT_QOS, "freeing client mem :%p",
 				     client->qos_class->client_addr);
-			qos_drain_token_ios(client->qos_class, QOS_CLIENT);
-			qos_drain_bw_ios(client->qos_class, QOS_CLIENT);
+			qos_drain_ios(client->qos_class, QOS_CLIENT);
 			gsh_free(client->qos_class);
 		}
 		break;
@@ -263,15 +324,13 @@ void qos_free_mem(void *gsh_ptr, unsigned int qos_class_type)
 
 			LogFullDebug(COMPONENT_QOS, "freeing export mem :%d",
 				     export->qos_class->share_id);
-			/* releasing BW waiting io's */
+			/* releasing waiting io's */
 			while (c_qos_class != NULL) {
-				qos_drain_token_ios(c_qos_class, QOS_CLIENT);
-				qos_drain_bw_ios(c_qos_class, QOS_CLIENT);
+				qos_drain_ios(c_qos_class, QOS_CLIENT);
 				c_qos_class = c_qos_class->next;
 			}
 			pspc_free_client_list(&s_qos_class->clients);
-			qos_drain_token_ios(s_qos_class, QOS_SHARE);
-			qos_drain_bw_ios(s_qos_class, QOS_SHARE);
+			qos_drain_ios(s_qos_class, QOS_SHARE);
 			gsh_free(export->qos_class);
 			if (export->qos_block)
 				gsh_free(export->qos_block);
@@ -322,7 +381,7 @@ void copy_gsh_qos_mem(struct gsh_export *dest, struct gsh_export *src)
 
 		break;
 	case QOS_PC_ENABLED:
-		LogFullDebug(COMPONENT_QOS, " NOT expected call here");
+		LogFullDebug(COMPONENT_QOS, "NOT expected");
 		break;
 	case QOS_PS_PC_ENABLED:
 		qos_block_config_t *new_values_pspc = NULL;
@@ -361,14 +420,6 @@ void copy_gsh_qos_mem(struct gsh_export *dest, struct gsh_export *src)
 			     g_qos_config->qos_type);
 	}
 }
-static void set_bucket_value(qos_bucket_t *bucket, unsigned int max_bw,
-			     unsigned int max_tokens,
-			     unsigned int tokens_renew_time)
-{
-	bucket->max_bw_allowed = max_bw;
-	bucket->max_available_tokens = max_tokens;
-	bucket->tokens_renew_time = (tokens_renew_time * 1000000);
-}
 
 static void print_bucket_values(qos_bucket_t *bucket)
 {
@@ -378,7 +429,11 @@ static void print_bucket_values(qos_bucket_t *bucket)
 		bucket->num_ios_waiting, bucket->max_bw_allowed,
 		bucket->bw_ldct, bucket->max_available_tokens,
 		bucket->tokens_consumed, bucket->tokens_renew_time,
-		bucket->last_tokens_consumed_time);
+		bucket->token_ldct);
+	LogFullDebug(COMPONENT_QOS,
+		     "max_iops:%ld iops_ldct:%ld iops_consumed:%ld ",
+		     bucket->max_iops_allowed, bucket->iops_ldct,
+		     bucket->iops_consumed);
 }
 static inline void print_class_values(void *qos_class,
 				      unsigned int qos_class_type,
@@ -387,132 +442,249 @@ static inline void print_class_values(void *qos_class,
 	if (qos_class_type == QOS_SHARE) {
 		qos_share_t *share = qos_class;
 
-		LogFullDebug(COMPONENT_QOS,
-			     "%s SI:%d s_wio:%d bw_e:%d t_e:%d c_bw:%d c_rw:%d",
-			     str, share->share_id, share->num_ios_waiting,
-			     share->bw_enabled, share->token_enabled,
-			     share->combined_rw_bw_control,
-			     share->combined_rw_token_control);
+		LogFullDebug(
+			COMPONENT_QOS,
+			"%s SI:%d s_wio:%d bw_e:%d t_e:%d ios_e:%d c_bw:%d c_rw:%d c_iops:%d",
+			str, share->share_id, share->num_ios_waiting,
+			share->bw_enabled, share->token_enabled,
+			share->iops_enabled, share->combined_rw_bw_control,
+			share->combined_rw_token_control,
+			share->combined_rw_iops_control);
 		print_bucket_values(&(share->read_bucket));
 		print_bucket_values(&(share->write_bucket));
 
 	} else if (qos_class_type == QOS_CLIENT) {
 		qos_client_t *client = qos_class;
 
-		LogFullDebug(COMPONENT_QOS,
-			     "%s CI:%p s_wio:%d bw_e:%d t_e:%d c_bw:%d c_t:%d",
-			     str, client->client_addr, client->num_ios_waiting,
-			     client->bw_enabled, client->token_enabled,
-			     client->combined_rw_bw_control,
-			     client->combined_rw_token_control);
+		LogFullDebug(
+			COMPONENT_QOS,
+			"%s CI:%p s_wio:%d bw_e:%d t_e:%d iops_e:%d c_bw:%d c_t:%d c_iops:%d",
+			str, client->client_addr, client->num_ios_waiting,
+			client->bw_enabled, client->token_enabled,
+			client->iops_enabled, client->combined_rw_bw_control,
+			client->combined_rw_token_control,
+			client->combined_rw_iops_control);
 
 		print_bucket_values(&(client->read_bucket));
 		print_bucket_values(&(client->write_bucket));
 	}
 }
-static void set_bucket_values(void *entry, unsigned int class_type,
-			      struct qos_block_config *in)
+
+static void set_bucket_value_token(qos_bucket_t *bucket,
+				   unsigned int max_tokens,
+				   unsigned int tokens_renew_time)
 {
-	if (in->enable_qos == false)
-		return;
+	bucket->max_available_tokens = max_tokens;
+	bucket->tokens_renew_time = (tokens_renew_time * 1000000);
+}
+
+static void set_bucket_value_bw(qos_bucket_t *bucket, unsigned int max_bw)
+{
+	bucket->max_bw_allowed = max_bw;
+}
+
+static void set_bucket_value_iops(qos_bucket_t *bucket, unsigned int max_iops)
+{
+	bucket->max_iops_allowed = max_iops;
+}
+
+static void update_class_token_values(void *class, unsigned int class_type,
+				      struct qos_block_config *in)
+{
+	qos_bucket_t *rbucket = qos_get_bucket(class, class_type, QOS_READ);
+	qos_bucket_t *wbucket = qos_get_bucket(class, class_type, QOS_WRITE);
+	bool *token_enabled = NULL;
+	bool *combined_rw_token_control = NULL;
+	uint64_t max_write_token = 0;
+	uint64_t max_write_token_renew_time = 0;
+	uint64_t max_read_token = 0;
+	uint64_t max_read_token_renew_time = 0;
 
 	if (class_type == QOS_SHARE) {
-		qos_share_t *share_entry = entry;
-
-		if ((g_qos_config->enable_tokens && in->enable_tokens) &&
-		    (g_qos_config->enable_bw_control &&
-		     in->enable_bw_control)) {
-			share_entry->bw_enabled = 1;
-			share_entry->token_enabled = 1;
-			set_bucket_value(&(share_entry->read_bucket),
-					 in->max_export_read_bw,
-					 in->max_export_read_tokens,
-					 in->export_read_tokens_renew_time);
-			set_bucket_value(&(share_entry->write_bucket),
-					 in->max_export_write_bw,
-					 in->max_export_write_tokens,
-					 in->export_write_tokens_renew_time);
-		} else if (g_qos_config->enable_bw_control &&
-			   in->enable_bw_control) {
-			share_entry->bw_enabled = 1;
-			set_bucket_value(&(share_entry->read_bucket),
-					 in->max_export_read_bw, 0, 0);
-			set_bucket_value(&(share_entry->write_bucket),
-					 in->max_export_write_bw, 0, 0);
-		} else if (g_qos_config->enable_tokens && in->enable_tokens) {
-			share_entry->token_enabled = 1;
-			set_bucket_value(&(share_entry->read_bucket), 0,
-					 in->max_export_read_tokens,
-					 in->export_read_tokens_renew_time);
-			set_bucket_value(&(share_entry->write_bucket), 0,
-					 in->max_export_write_tokens,
-					 in->export_write_tokens_renew_time);
-		}
-		print_class_values(share_entry, QOS_SHARE, "debugdp");
+		qos_share_t *qos_class = class;
+		token_enabled = &(qos_class->token_enabled);
+		combined_rw_token_control =
+			&(qos_class->combined_rw_token_control);
+		max_write_token = in->max_export_write_tokens;
+		max_write_token_renew_time = in->export_write_tokens_renew_time;
+		max_read_token = in->max_export_read_tokens;
+		max_read_token_renew_time = in->export_read_tokens_renew_time;
 	} else {
-		qos_client_t *client_entry = entry;
-
-		if ((g_qos_config->enable_tokens && in->enable_tokens) &&
-		    (g_qos_config->enable_bw_control &&
-		     in->enable_bw_control)) {
-			client_entry->bw_enabled = 1;
-			client_entry->token_enabled = 1;
-			set_bucket_value(&(client_entry->read_bucket),
-					 in->max_client_read_bw,
-					 in->max_client_read_tokens,
-					 in->client_read_tokens_renew_time);
-			set_bucket_value(&(client_entry->write_bucket),
-					 in->max_client_write_bw,
-					 in->max_client_write_tokens,
-					 in->client_write_tokens_renew_time);
-		} else if (g_qos_config->enable_bw_control &&
-			   in->enable_bw_control) {
-			client_entry->bw_enabled = 1;
-			set_bucket_value(&(client_entry->read_bucket),
-					 in->max_client_read_bw, 0, 0);
-			set_bucket_value(&(client_entry->write_bucket),
-					 in->max_client_write_bw, 0, 0);
-		} else if (g_qos_config->enable_tokens && in->enable_tokens) {
-			client_entry->token_enabled = 1;
-			set_bucket_value(&(client_entry->read_bucket), 0,
-					 in->client_read_tokens_renew_time,
-					 in->max_client_read_tokens);
-			set_bucket_value(&(client_entry->write_bucket), 0,
-					 in->client_write_tokens_renew_time,
-					 in->max_client_write_tokens);
-		}
-		print_class_values(client_entry, QOS_CLIENT, "debugdp");
+		qos_client_t *qos_class = class;
+		token_enabled = &(qos_class->token_enabled);
+		combined_rw_token_control =
+			&(qos_class->combined_rw_token_control);
+		max_write_token = in->max_client_write_tokens;
+		max_write_token_renew_time = in->client_write_tokens_renew_time;
+		max_read_token = in->max_client_read_tokens;
+		max_read_token_renew_time = in->client_read_tokens_renew_time;
 	}
+	/* if true : Runtime enabling/updating of values */
+	if ((g_qos_config->enable_tokens && in->enable_tokens)) {
+		qos_drain_token_ios(class, class_type);
+		if (in->combined_rw_token_control) {
+			set_bucket_value_token(wbucket, max_write_token,
+					       max_write_token_renew_time);
+			*combined_rw_token_control = true;
+		} else {
+			set_bucket_value_token(wbucket, max_write_token,
+					       max_write_token_renew_time);
+			set_bucket_value_token(rbucket, max_read_token,
+					       max_read_token_renew_time);
+			*combined_rw_token_control = false;
+		}
+		*token_enabled = in->enable_tokens;
+	} else {
+		/* Runtime disabling of particular config */
+		if (*token_enabled == true)
+			qos_drain_token_ios(class, class_type);
+	}
+}
+
+static void update_class_bw_values(void *class, unsigned int class_type,
+				   struct qos_block_config *in)
+{
+	qos_bucket_t *rbucket = qos_get_bucket(class, class_type, QOS_READ);
+	qos_bucket_t *wbucket = qos_get_bucket(class, class_type, QOS_WRITE);
+	bool *bw_enabled = NULL;
+	bool *combined_rw_bw_control = NULL;
+	uint64_t max_combined_bw = 0;
+	uint64_t max_write_bw = 0;
+	uint64_t max_read_bw = 0;
+	int dummy_counter = UINT32_MAX;
+
+	if (class_type == QOS_SHARE) {
+		qos_share_t *qos_class = class;
+		bw_enabled = &(qos_class->bw_enabled);
+		combined_rw_bw_control = &(qos_class->combined_rw_bw_control);
+		max_combined_bw = in->max_export_combined_bw;
+		max_write_bw = in->max_export_write_bw;
+		max_read_bw = in->max_export_read_bw;
+	} else {
+		qos_client_t *qos_class = class;
+		bw_enabled = &(qos_class->bw_enabled);
+		combined_rw_bw_control = &(qos_class->combined_rw_bw_control);
+		max_combined_bw = in->max_client_combined_bw;
+		max_write_bw = in->max_client_write_bw;
+		max_read_bw = in->max_client_read_bw;
+	}
+
+	/* if true : Runtime enabling/updating of values */
+	if ((g_qos_config->enable_bw_control && in->enable_bw_control)) {
+		if (in->combined_rw_bw_control) {
+			set_bucket_value_bw(wbucket, max_combined_bw);
+			/* Run time switching from 2 bucket to 1 bucket */
+			if (rbucket->io_waitlist_qos_bc != NULL) {
+				release_wait_ios(&(rbucket->io_waitlist_qos_bc),
+						 &(rbucket->num_ios_waiting),
+						 &dummy_counter);
+			}
+			*combined_rw_bw_control = true;
+		} else {
+			set_bucket_value_bw(wbucket, max_write_bw);
+			set_bucket_value_bw(rbucket, max_read_bw);
+			*combined_rw_bw_control = false;
+		}
+		*bw_enabled = in->enable_bw_control;
+	} else {
+		/* Runtime disabling of particular config */
+		if (*bw_enabled == true)
+			qos_drain_bw_ios(class, class_type);
+	}
+}
+
+static void update_class_iops_values(void *class, unsigned int class_type,
+				     struct qos_block_config *in)
+{
+	qos_bucket_t *rbucket = qos_get_bucket(class, class_type, QOS_READ);
+	qos_bucket_t *wbucket = qos_get_bucket(class, class_type, QOS_WRITE);
+	bool *iops_enabled = NULL;
+	bool *combined_rw_iops_control = NULL;
+	uint64_t max_combined_iops = 0;
+	uint64_t max_write_iops = 0;
+	uint64_t max_read_iops = 0;
+	int dummy_counter = UINT32_MAX;
+
+	if (class_type == QOS_SHARE) {
+		qos_share_t *qos_class = class;
+		iops_enabled = &(qos_class->iops_enabled);
+		combined_rw_iops_control =
+			&(qos_class->combined_rw_iops_control);
+		max_combined_iops = in->max_export_combined_iops;
+		max_write_iops = in->max_export_write_iops;
+		max_read_iops = in->max_export_read_iops;
+	} else {
+		qos_client_t *qos_class = class;
+		iops_enabled = &(qos_class->iops_enabled);
+		combined_rw_iops_control =
+			&(qos_class->combined_rw_iops_control);
+		max_combined_iops = in->max_client_combined_iops;
+		max_write_iops = in->max_client_write_iops;
+		max_read_iops = in->max_client_read_iops;
+	}
+	/* if true : Runtime enabling/updating of values */
+	if ((g_qos_config->enable_iops_control && in->enable_iops_control)) {
+		if (in->combined_rw_iops_control) {
+			set_bucket_value_iops(wbucket, max_combined_iops);
+			/* Run time switching from 2 bucket to 1 bucket */
+			if (rbucket->io_waitlist_qos_iops != NULL) {
+				release_wait_ios(
+					&(rbucket->io_waitlist_qos_iops),
+					&(rbucket->num_ios_waiting),
+					&dummy_counter);
+			}
+			*combined_rw_iops_control = true;
+		} else {
+			set_bucket_value_iops(wbucket, max_write_iops);
+			set_bucket_value_iops(rbucket, max_read_iops);
+			*combined_rw_iops_control = false;
+		}
+		*iops_enabled = in->enable_iops_control;
+	} else {
+		/* Runtime disabling of particular config */
+		if (*iops_enabled == true)
+			qos_drain_iops_ios(class, class_type);
+	}
+}
+
+static void set_class_values(void *entry, unsigned int class_type,
+			     struct qos_block_config *in)
+{
+	if (in->enable_qos == false) {
+		in->enable_tokens = false;
+		in->enable_iops_control = false;
+		in->enable_bw_control = false;
+	}
+
+	update_class_token_values(entry, class_type, in);
+	update_class_bw_values(entry, class_type, in);
+	update_class_iops_values(entry, class_type, in);
 }
 
 static void setNode_ps(qos_share_t *node, uint16_t export_id,
 		       struct qos_block_config *qos_block)
 {
 	node->share_id = export_id;
-	node->combined_rw_bw_control = qos_block->combined_rw_bw_control;
-	node->combined_rw_token_control = qos_block->combined_rw_token_control;
-	if (qos_block->combined_rw_bw_control) {
-		qos_block->max_export_write_bw =
-			qos_block->max_export_combined_bw;
-		qos_block->max_client_write_bw =
-			qos_block->max_client_combined_bw;
-	}
-	set_bucket_values(node, QOS_SHARE, qos_block);
+
+	if (g_qos_config->enable_qos == false)
+		return;
+
+	LogFullDebug(COMPONENT_QOS, "Added new config for :%d", export_id);
+	set_class_values(node, QOS_SHARE, qos_block);
+	print_class_values(node, QOS_SHARE, "debugdp");
 }
 
 static void setNode_pc(qos_client_t *node, sockaddr_t *client_addr,
 		       struct qos_block_config *qos_block)
 {
 	node->client_addr = client_addr;
-	node->combined_rw_bw_control = qos_block->combined_rw_bw_control;
-	node->combined_rw_token_control = qos_block->combined_rw_token_control;
-	if (qos_block->combined_rw_bw_control) {
-		qos_block->max_export_write_bw =
-			qos_block->max_export_combined_bw;
-		qos_block->max_client_write_bw =
-			qos_block->max_client_combined_bw;
-	}
-	set_bucket_values(node, QOS_CLIENT, qos_block);
+
+	if (g_qos_config->enable_qos == false)
+		return;
+
+	LogFullDebug(COMPONENT_QOS, "Added new config for :%p", client_addr);
+	set_class_values(node, QOS_CLIENT, qos_block);
+	print_class_values(node, QOS_CLIENT, "debugdp");
 }
 
 void QoS_perShareInsert(struct gsh_export *export,
@@ -531,7 +703,7 @@ void QoS_perShareInsert(struct gsh_export *export,
 		qos_share_t *node = gsh_malloc(sizeof(qos_share_t));
 
 		memset(node, 0, sizeof(qos_share_t));
-		/* NULL Indicates QOS block is not popultaed
+		/* NULL Indicates QOS block is not populated
 		 * i.e run time enabledment of QOS */
 		if (export->qos_block == NULL) {
 			qos_block_config_t *new_block;
@@ -545,11 +717,11 @@ void QoS_perShareInsert(struct gsh_export *export,
 		pthread_mutex_init(&(node->read_bucket.lock), NULL);
 		pthread_mutex_init(&(node->write_bucket.lock), NULL);
 		export->qos_class = node;
+	} else {
+		*(export->qos_block) = *lqos_block;
 	}
 
 	setNode_ps(export->qos_class, export->export_id, lqos_block);
-	LogFullDebug(COMPONENT_QOS, "Config update for :%s",
-		     export->cfg_fullpath);
 }
 
 qos_client_t *allocate_client(void)
@@ -562,6 +734,7 @@ qos_client_t *allocate_client(void)
 	pthread_mutex_init(&(node->write_bucket.lock), NULL);
 	return node;
 }
+
 qos_client_t *pspc_allocate_and_init_client(sockaddr_t *client_addr,
 					    struct qos_block_config *qos_block)
 {
@@ -609,6 +782,24 @@ qos_client_t *pspc_get_client_from_list(qos_client_t *head,
 	}
 	/* Client Not Found */
 	return NULL;
+}
+
+qos_client_t *pspc_get_client(qos_share_t *share, sockaddr_t *client_addr)
+{
+	/* Client Not Found */
+	qos_client_t *client =
+		pspc_get_client_from_list(share->clients, client_addr);
+	if (client == NULL) {
+		pthread_mutex_lock(&share->lock);
+		client = pspc_get_client_from_list(share->clients, client_addr);
+		if (client == NULL)
+			client = pspc_alloc_init_add_client(
+				&(share->clients), client_addr,
+				op_ctx->ctx_export->qos_block);
+		pthread_mutex_unlock(&share->lock);
+	}
+
+	return client;
 }
 
 qos_client_t *pspc_remove_client_from_list(qos_client_t **head,
@@ -684,7 +875,7 @@ static inline qos_bucket_t *qos_get_bucket(void *entry, unsigned int class_type,
 }
 
 /*  Manupulte this function to make single bucket or
- *  independent read/write bucket for BandWidth Control*/
+ *  independent read/write bucket for token Control*/
 static inline qos_bucket_t *qos_get_token_bucket(void *qos_class,
 						 unsigned int class_type,
 						 unsigned int op_type)
@@ -709,7 +900,7 @@ static inline qos_bucket_t *qos_get_token_bucket(void *qos_class,
 }
 
 /*  Manupulte this function to make single bucket or
- *  independent read/write bucket for Token Control */
+ *  independent read/write bucket for bw Control */
 static inline qos_bucket_t *qos_get_bw_bucket(void *qos_class,
 					      unsigned int class_type,
 					      unsigned int op_type)
@@ -733,6 +924,30 @@ static inline qos_bucket_t *qos_get_bw_bucket(void *qos_class,
 	}
 }
 
+/*  Manupulte this function to make single bucket or
+ *  independent read/write bucket for iops Control */
+static inline qos_bucket_t *qos_get_iops_bucket(void *qos_class,
+						unsigned int class_type,
+						unsigned int op_type)
+{
+	if (class_type == QOS_SHARE || class_type == QOS_PSPC) {
+		qos_share_t *share = qos_class;
+
+		if (share->iops_enabled == 0)
+			return NULL;
+		if (share->combined_rw_iops_control)
+			op_type = QOS_WRITE;
+		return qos_get_bucket(share, class_type, op_type);
+	} else {
+		qos_client_t *client = qos_class;
+
+		if (client->iops_enabled == 0)
+			return NULL;
+		if (client->combined_rw_iops_control)
+			op_type = QOS_WRITE;
+		return qos_get_bucket(client, class_type, op_type);
+	}
+}
 /*  True indicates : consumed the token for the current io
  *  False indicates : Not able to consume token i.,e tokens alreday exuhasted
  **/
@@ -748,7 +963,7 @@ static bool qos_check_bucket_token_availability(qos_bucket_t *bucket,
 static void qos_consume_bucket_token(qos_bucket_t *bucket,
 				     uint64_t request_size)
 {
-	bucket->last_tokens_consumed_time = get_time_in_usec();
+	bucket->token_ldct = get_time_in_usec();
 	bucket->tokens_consumed += request_size;
 }
 
@@ -862,6 +1077,7 @@ static bool qos_check_ps(void *class_ptr, uint64_t request_size,
 	pthread_mutex_unlock(&qos_class->lock);
 	return true;
 }
+
 static bool qos_check_pc(void *class_ptr, uint64_t request_size,
 			 unsigned int op_type, void *caller_data,
 			 compound_data_t *data, unsigned int class_type)
@@ -886,13 +1102,14 @@ static bool qos_check_pc(void *class_ptr, uint64_t request_size,
 	pthread_mutex_unlock(&qos_class->lock);
 	return true;
 }
+
 static bool qos_check_pspc(void *class_ptr, uint64_t request_size,
 			   unsigned int op_type, void *caller_data,
 			   compound_data_t *data, unsigned int class_type)
 {
 	qos_share_t *s_qos_class = class_ptr;
-	qos_client_t *c_qos_class = pspc_get_client_from_list(
-		s_qos_class->clients, &op_ctx->client->cl_addrbuf);
+	qos_client_t *c_qos_class =
+		pspc_get_client(s_qos_class, &op_ctx->client->cl_addrbuf);
 
 	int share_token_available = qos_check_token_availability(
 		s_qos_class, request_size, op_type, QOS_SHARE);
@@ -905,7 +1122,6 @@ static bool qos_check_pspc(void *class_ptr, uint64_t request_size,
 	 *  and enablement of QOS BW and Token control.
 	 *  IO Consumer thread will work on bucket locks */
 	pthread_mutex_lock(&s_qos_class->lock);
-	LogFullDebug(COMPONENT_QOS, "Inside the lock");
 	if (!share_token_available) {
 		qos_token_exausted_deffer_task(s_qos_class, caller_data, data,
 					       QOS_SHARE, op_type);
@@ -925,9 +1141,7 @@ static bool qos_check_pspc(void *class_ptr, uint64_t request_size,
 				  QOS_SHARE);
 		qos_consume_token(c_qos_class, request_size, op_type,
 				  QOS_CLIENT);
-		LogFullDebug(COMPONENT_QOS, "bw enabled check");
 		if (c_qos_class->bw_enabled) {
-			LogFullDebug(COMPONENT_QOS, "deffering task ");
 			qos_bw_deffer_task(c_qos_class, caller_data,
 					   request_size, get_time_in_usec(),
 					   op_type, QOS_CLIENT);
@@ -938,6 +1152,7 @@ static bool qos_check_pspc(void *class_ptr, uint64_t request_size,
 			return true;
 		}
 	}
+	pthread_mutex_lock(&s_qos_class->lock);
 	return true;
 }
 
@@ -946,10 +1161,6 @@ unsigned int QoS_Process_ps(unsigned int size, void *caller_data,
 {
 	if (op_ctx->ctx_export->qos_class == NULL) {
 		pthread_mutex_lock(&g_qos_lock);
-		LogFullDebug(COMPONENT_QOS,
-			     "PS key not found for:%s, so creating new entry",
-			     op_ctx->ctx_export->cfg_fullpath);
-
 		if (op_ctx->ctx_export->qos_class == NULL)
 			QoS_perShareInsert(op_ctx->ctx_export, g_qos_config);
 
@@ -966,11 +1177,6 @@ unsigned int QoS_Process_pc(unsigned int size, void *caller_data,
 {
 	if (op_ctx->client->qos_class == NULL) {
 		pthread_mutex_lock(&g_qos_lock);
-		LogFullDebug(
-			COMPONENT_QOS,
-			"PC client entry not found :%p, creating new client",
-			&op_ctx->client->cl_addrbuf);
-
 		/* Since this is QOS_PC, pass the global QOS values */
 		if (op_ctx->client->qos_class == NULL)
 			QoS_perClientInsert(g_qos_config, op_ctx->client);
@@ -986,21 +1192,17 @@ unsigned int QoS_Process_pc(unsigned int size, void *caller_data,
 unsigned int QoS_Process_pspc(unsigned int size, void *caller_data,
 			      compound_data_t *data, unsigned int op_type)
 {
-	char *key = op_ctx->ctx_export->cfg_fullpath;
 	qos_share_t *share = op_ctx->ctx_export->qos_class;
 	sockaddr_t *client_addr = &op_ctx->client->cl_addrbuf;
 
 	if (share == NULL) {
-		/*  Execution reached here means QOS is enabled but,
-		 *  QOS block is not populated for this share
-		 *  so apply the global values to the share values
-		 *  and mark the qos_enabled to false, we need this in case of
-		 *  runtime enablement of QOS*/
-		pthread_mutex_lock(&g_qos_lock);
-		/* On runtime enablement of QOS, or due to only global config
-		 * present, there is possiblity of multiple IO's rushing
+		/* Execution reached here means QOS is enabled but
+		 * export level qos block is not present,
+		 * apply global conf to export
+		 * There is possiblity of multiple IO's rushing
 		 * into this function for this paticular share,
 		 * so recheck before going for allocation*/
+		pthread_mutex_lock(&g_qos_lock);
 		share = op_ctx->ctx_export->qos_class;
 		if (share == NULL) {
 			QoS_perShareInsert(op_ctx->ctx_export, g_qos_config);
@@ -1010,24 +1212,7 @@ unsigned int QoS_Process_pspc(unsigned int size, void *caller_data,
 	}
 	/* Is QOS disabled for this particular share */
 	if (share->bw_enabled || share->token_enabled) {
-		qos_client_t *client = NULL;
-
-		client = pspc_get_client_from_list(share->clients, client_addr);
-		if (client == NULL) {
-			LogFullDebug(COMPONENT_QOS,
-				     "Share:%s Client not found: %p", key,
-				     client_addr);
-			pthread_mutex_lock(&share->lock);
-			client = pspc_get_client_from_list(share->clients,
-							   client_addr);
-			if (client == NULL)
-				client = pspc_alloc_init_add_client(
-					&(share->clients), client_addr,
-					op_ctx->ctx_export->qos_block);
-			pthread_mutex_unlock(&share->lock);
-		}
-
-		LogFullDebug(COMPONENT_QOS, "PerShare key found :%s", key);
+		(void)pspc_get_client(share, client_addr);
 		if (!qos_check_pspc(share, size, op_type, caller_data, data,
 				    QOS_PSPC)) {
 			return 1;
@@ -1068,13 +1253,11 @@ uint64_t qos_get_time_to_tokenrefresh(void *qos_class, unsigned int class_type,
 {
 	qos_bucket_t *bucket =
 		qos_get_token_bucket(qos_class, class_type, op_type);
-	uint64_t ret = (((bucket->last_tokens_consumed_time +
-			  bucket->tokens_renew_time) -
-			 ctime) /
-			1000000);
+	uint64_t ret =
+		(((bucket->token_ldct + bucket->tokens_renew_time) - ctime) /
+		 1000000);
 	LogFullDebug(COMPONENT_QOS, "LTC:%ld TRT:%ld CT:%ld TO:%ld",
-		     bucket->last_tokens_consumed_time,
-		     bucket->tokens_renew_time, ctime, ret);
+		     bucket->token_ldct, bucket->tokens_renew_time, ctime, ret);
 
 	return ret;
 }
@@ -1282,13 +1465,11 @@ static inline bool refresh_bucket_token(void *class_entry,
 	uint64_t ltime = get_time_in_usec();
 	/* This is the logic for limiting the io based on  */
 	if ((bucket->tokens_consumed >= bucket->max_available_tokens) &&
-	    (ltime >
-	     (bucket->last_tokens_consumed_time + bucket->tokens_renew_time))) {
+	    (ltime > (bucket->token_ldct + bucket->tokens_renew_time))) {
 		LogFullDebug(COMPONENT_QOS, "CT:%ld LCT:%ld TRT:%ld cal:%ld",
-			     ltime, bucket->last_tokens_consumed_time,
+			     ltime, bucket->token_ldct,
 			     bucket->tokens_renew_time,
-			     (bucket->last_tokens_consumed_time +
-			      bucket->tokens_renew_time));
+			     (bucket->token_ldct + bucket->tokens_renew_time));
 		bucket->tokens_consumed = 0;
 		return 1;
 	} else {
@@ -1442,20 +1623,21 @@ static void remove_timer_entry(timer_entry_t **head,
 
 static void list_timer_entries(timer_entry_t *current_share_list)
 {
+#if 0
 	timer_entry_t *current = current_share_list;
-
+	int counter = 0;
 	LogFullDebug(COMPONENT_QOS, "Current Timer Entries:");
 	while (current != NULL) {
+		++counter;
 		LogFullDebug(COMPONENT_QOS,
-			     "Entry:%p, Expiry: %ld, Callback: %p, Args: %p",
-			     current, current->expiry,
+			     "counter:%d Entry:%p, Expiry: %ld, Callback: %p, Args: %p",
+			     counter, current, current->expiry,
 			     (void *)current->callback, current->args);
 		current = current->next;
 	}
+#endif
 }
-/*  Force resume all the waiting IO's of share
- *  Condition : Io's waiting for replinsh of token and tokens got replinsh
- *		Ignore the lease(expiry time) on IO.
+/*  Force resume all the waiting IO's.
  */
 static inline void release_wait_ios(timer_entry_t **head,
 				    unsigned int *counter1,
@@ -1477,9 +1659,7 @@ static inline void release_wait_ios(timer_entry_t **head,
 	}
 }
 
-/*  Resume all the waiting IO's of share,
- *  based on the lease expiry time set by QOS.
- *  Expiry time on IO will be entertained
+/*  Resume all expired timer IO's.
  */
 static void execute_qos_expired_timers(timer_entry_t **head,
 				       unsigned int *counter1,
@@ -1491,29 +1671,18 @@ static void execute_qos_expired_timers(timer_entry_t **head,
 
 	while (current != NULL) {
 		if (current->expiry <= current_time) {
-			if (counter1 != NULL) {
-				LogFullDebug(COMPONENT_QOS,
-					     "Exp_IO_T:%p CT:%ld Ex:%ld Tco:%d",
-					     current, current_time,
-					     current->expiry, *counter1);
-			} else {
-				LogFullDebug(
-					COMPONENT_QOS,
-					"Expired IO Timer:%p CT:%ld Expiry:%ld",
-					current, current_time, current->expiry);
-			}
+			LogFullDebug(COMPONENT_QOS,
+				     "Exp_IO_T:%p CT:%ld Ex:%ld Tco:%d Tco2:%d",
+				     current, current_time, current->expiry,
+				     *counter1, *counter2);
 			current->callback(current->args);
 			expired = current;
 		}
 		current = current->next;
 		if (expired != NULL) {
 			remove_timer_entry(head, expired);
-			if (counter1 != NULL && counter2 != NULL) {
-				--*counter1;
-				--*counter2;
-			} else if (counter1 != NULL) {
-				--*counter1;
-			}
+			--*counter1;
+			--*counter2;
 			expired = NULL;
 		}
 	}
@@ -1688,8 +1857,9 @@ static inline void refresh_qos_token(void)
  **/
 static inline void resume_bw_bucket_io(qos_bucket_t *bucket)
 {
+	uint32_t dummy_counter = UINT32_MAX;
 	execute_qos_expired_timers(&(bucket->io_waitlist_qos_bc),
-				   &(bucket->num_ios_waiting), NULL);
+				   &(bucket->num_ios_waiting), &dummy_counter);
 }
 
 static inline void resume_bw_io_ps(qos_share_t *share, unsigned int op_type)
@@ -1738,10 +1908,6 @@ static inline void resume_bw_io_pspc(qos_share_t *share, unsigned int op_type)
 	pthread_mutex_lock(&(bucket->lock));
 	timer_entry_t *io_entry = bucket->io_waitlist_qos_bc;
 
-	LogFullDebug(COMPONENT_QOS,
-		     ">>>> SI:%d s_wio:%d op_type:%d lct:%ld sb_io:%d ",
-		     share->share_id, share->num_ios_waiting, op_type,
-		     bucket->bw_ldct, bucket->num_ios_waiting);
 	/*  Since IO load is not there,
 	 *  its possible again we entered here immediately */
 	while ((io_entry != NULL) &&
@@ -1769,10 +1935,6 @@ static inline void resume_bw_io_pspc(qos_share_t *share, unsigned int op_type)
 		gsh_free(io_entry);
 		io_entry = bucket->io_waitlist_qos_bc;
 	}
-	LogFullDebug(COMPONENT_QOS,
-		     "<<<< SI:%d s_wio:%d op_type:%d lct:%ld sb_io:%d ",
-		     share->share_id, share->num_ios_waiting, op_type,
-		     bucket->bw_ldct, bucket->num_ios_waiting);
 	pthread_mutex_unlock(&(bucket->lock));
 }
 
@@ -1830,8 +1992,11 @@ static inline void print_io_details_ps(qos_share_t *share,
 				       unsigned int op_type,
 				       uint64_t current_time, const char *str)
 {
-	if (share != NULL && sbucket != NULL)
+	if (share == NULL || sbucket == NULL) {
+		LogFullDebug(COMPONENT_QOS, "%s: share:%p sbucket:%p ", str,
+			     share, sbucket);
 		return;
+	}
 
 	LogFullDebug(COMPONENT_QOS,
 		     "%s:%d s_wio:%d op:%s pct:%ld sb_io:%d sbw_ldct:%ld", str,
@@ -1846,8 +2011,11 @@ static inline void print_io_details_pc(qos_client_t *client,
 				       unsigned int op_type,
 				       uint64_t current_time, const char *str)
 {
-	if (client != NULL && cbucket != NULL)
+	if (client == NULL || cbucket == NULL) {
+		LogFullDebug(COMPONENT_QOS, "%s: client:%p cbucket:%p ", str,
+			     client, cbucket);
 		return;
+	}
 
 	LogFullDebug(COMPONENT_QOS,
 		     "%s:%p c_wio:%d op:%s pct:%ld cb_io:%d cbw_ldct:%ld", str,
@@ -1855,31 +2023,6 @@ static inline void print_io_details_pc(qos_client_t *client,
 		     (op_type == QOS_READ) ? "QOS_READ" : "QOS_WRITE",
 		     current_time, cbucket->num_ios_waiting, cbucket->bw_ldct);
 	list_timer_entries(cbucket->io_waitlist_qos_bc);
-}
-
-static inline void print_io_details_pspc(qos_share_t *share,
-					 qos_client_t *client,
-					 qos_bucket_t *sbucket,
-					 qos_bucket_t *cbucket,
-					 unsigned int op_type,
-					 uint64_t current_time, const char *str)
-{
-	if (share == NULL || client == NULL || sbucket == NULL ||
-	    cbucket == NULL)
-		return;
-
-	LogFullDebug(COMPONENT_QOS,
-		     "%s SI:%d CI:%p s_wio:%d c_wio:%d op:%s lct:%ld pct:%ld",
-		     str, share->share_id, client->client_addr,
-		     share->num_ios_waiting, client->num_ios_waiting,
-		     (op_type == QOS_READ) ? "QOS_READ" : "QOS_WRITE",
-		     get_time_in_usec(), current_time);
-	LogFullDebug(COMPONENT_QOS,
-		     "sb_io:%d cb_io:%d sbw_ldct:%ld cbw_ldct:%ld",
-		     sbucket->num_ios_waiting, cbucket->num_ios_waiting,
-		     sbucket->bw_ldct, cbucket->bw_ldct);
-	list_timer_entries(cbucket->io_waitlist_qos_bc);
-	list_timer_entries(sbucket->io_waitlist_qos_bc);
 }
 
 static inline void print_all_io_details(void *qos_class, unsigned int op_type,
@@ -1893,9 +2036,6 @@ static inline void print_all_io_details(void *qos_class, unsigned int op_type,
 		qos_share_t *share = qos_class;
 		qos_bucket_t *sbucket =
 			qos_get_bw_bucket(share, QOS_SHARE, op_type);
-
-		LogDebug(COMPONENT_QOS, "got the qos share ######:%d",
-			 share->share_id);
 		print_io_details_ps(share, sbucket, op_type, 0, str);
 		if (qos_class_type != QOS_SHARE) {
 			qos_client_t *client = share->clients;
@@ -1903,8 +2043,8 @@ static inline void print_all_io_details(void *qos_class, unsigned int op_type,
 			while (client != NULL) {
 				qos_bucket_t *cbucket = qos_get_bw_bucket(
 					client, QOS_CLIENT, op_type);
-				print_io_details_pspc(share, client, sbucket,
-						      cbucket, op_type, 0, str);
+				print_io_details_pc(client, cbucket, op_type, 0,
+						    str);
 				client = client->next;
 			}
 		}
@@ -1912,9 +2052,6 @@ static inline void print_all_io_details(void *qos_class, unsigned int op_type,
 		qos_client_t *client = qos_class;
 		qos_bucket_t *cbucket =
 			qos_get_bw_bucket(client, QOS_CLIENT, op_type);
-
-		LogDebug(COMPONENT_QOS, "got the qos client ######:%p",
-			 client->client_addr);
 		print_io_details_pc(client, cbucket, op_type, 0, str);
 	}
 }
@@ -1942,7 +2079,7 @@ static inline void pspc_reschedule_bw_io(qos_share_t *share,
 			}
 			pthread_mutex_lock(&cbucket->lock);
 			if (current_time >= cbucket->bw_ldct &&
-			    cbucket->num_ios_waiting != 0) {
+			    cbucket->io_waitlist_qos_bc != NULL) {
 				pspc_rescedule_io_to_share(sbucket, cbucket,
 							   current_time);
 			}
@@ -1963,6 +2100,9 @@ bool ps_bw_control_cb(struct gsh_export *export, void *state)
 				     __func__);
 		resume_bw_io_ps(share, *(unsigned int *)state);
 	}
+	if (share && share->iops_enabled) {
+		resume_iops_ps(share, *(unsigned int *)state);
+	}
 	/* Continue iteration */
 	return true;
 }
@@ -1974,6 +2114,9 @@ bool pc_bw_control_cb(struct gsh_client *cl, void *state)
 		print_all_io_details(client, *(unsigned int *)state, QOS_CLIENT,
 				     __func__);
 		resume_bw_io_pc(client, *(unsigned int *)state);
+	}
+	if (client && client->iops_enabled) {
+		resume_iops_pc(client, *(unsigned int *)state);
 	}
 	/* Continue iteration */
 	return true;
@@ -1987,6 +2130,10 @@ bool pspc_bw_control_cb(struct gsh_export *export, void *state)
 				     __func__);
 		pspc_reschedule_bw_io(share, *(unsigned int *)state);
 		resume_bw_io_pspc(share, *(unsigned int *)state);
+	}
+	if (share && share->iops_enabled) {
+		pspc_reschedule_iops(share, *(unsigned int *)state);
+		resume_iops_pspc(share, *(unsigned int *)state);
 	}
 	/* Continue iteration */
 	return true;
@@ -2038,7 +2185,7 @@ static void *qos_thread_func(void *arg)
 			counter = 0;
 		}
 		/* Periodic Wakeup */
-		usleep(BW_DELAY_USEC);
+		usleep(BW_DELAY_USEC / 2);
 		counter++;
 	}
 	return NULL;
@@ -2094,8 +2241,7 @@ qos_share_t *get_share_qos(struct gsh_export *export)
 	}
 	if (export->qos_block != NULL) {
 		qos_class = export->qos_class;
-		LogFullDebug(COMPONENT_QOS,
-			     "Config update debugdp export:%p: share%p", export,
+		LogFullDebug(COMPONENT_QOS, "export:%p: share%p", export,
 			     export->qos_class);
 		if (qos_class == NULL) {
 			LogDebug(COMPONENT_QOS, "qos_block is NULL path:%s",
@@ -2126,4 +2272,391 @@ uint32_t get_share_client_count(qos_share_t *s_qos_class)
 	}
 
 	return count;
+}
+
+/* Below is IOPS implemnatation */
+void qos_iops_deffer_task(qos_bucket_t *bucket, void *caller_data,
+			  uint64_t size, uint64_t timeout)
+{
+	struct qos_op_cb_arg *qos_cb_args =
+		alloc_qos_cb_args(caller_data, RATELIMITING_IO);
+	timer_entry_t *new_timer_entry = create_timer_entry(
+		timeout, nfs4_qos_compond_cb, (void *)qos_cb_args);
+	new_timer_entry->size = size;
+	pthread_mutex_lock(&bucket->lock);
+	insert_timer_entry(&(bucket->io_waitlist_qos_iops), new_timer_entry);
+	list_timer_entries(bucket->io_waitlist_qos_iops);
+	++bucket->num_ios_waiting;
+	pthread_mutex_unlock(&bucket->lock);
+}
+
+/*this function should get called only if accounting is required
+ * Deffering of the task will be decided by logic based on IOP accounting */
+int qos_iops_check(compound_data_t *data, qos_bucket_t *bucket)
+{
+	uint64_t last_time = bucket->iops_ldct;
+	uint64_t current_time = get_time_in_usec();
+	uint64_t timeout = 0;
+	/*max compound can be 100 only*/
+	uint8_t num_ops = data->argarray_len;
+	uint64_t required_time_for_io =
+		(num_ops * (USEC_IN_SEC / bucket->max_iops_allowed));
+
+	bucket->iops_consumed += num_ops;
+	/*Set the compound ops accounted bit*/
+	data->qos_flags |= IS_QOS_IOPS_ACCOUNTED;
+
+	/* Accounting for the previous 5 Milliseconds also,
+	 * so that algo doesn't missed the limit */
+	if (current_time <
+	    (last_time + IOPS_DELAY_USEC + required_time_for_io)) {
+		bucket->iops_ldct = bucket->iops_ldct + required_time_for_io;
+	} else {
+		bucket->iops_ldct = current_time + required_time_for_io;
+	}
+	timeout = bucket->iops_ldct;
+
+	/* The whole compound has been Accounted for */
+	if (timeout <= current_time) {
+		return QOS_TASK_ASYNC_NOT_SCHEDULED;
+	} else {
+		qos_iops_deffer_task(bucket, data, num_ops, timeout);
+		return QOS_TASK_ASYNC_SCHEDULED;
+	}
+}
+
+int QoS_Process_iops_ps(compound_data_t *data, uint32_t op_type)
+{
+	qos_share_t *share = op_ctx->ctx_export->qos_class;
+	qos_bucket_t *bucket = NULL;
+	int ret = 0;
+
+	LogFullDebug(COMPONENT_QOS, "Share:%s ",
+		     op_ctx->ctx_export->cfg_fullpath);
+	if (share == NULL) {
+		pthread_mutex_lock(&g_qos_lock);
+		if (op_ctx->ctx_export->qos_class == NULL)
+			QoS_perShareInsert(op_ctx->ctx_export, g_qos_config);
+
+		share = op_ctx->ctx_export->qos_class;
+		pthread_mutex_unlock(&g_qos_lock);
+	}
+
+	if (share->iops_enabled == false)
+		return QOS_TASK_ASYNC_NOT_SCHEDULED;
+
+	pthread_mutex_lock(&share->lock);
+	bucket = qos_get_iops_bucket(share, QOS_SHARE, op_type);
+	if (bucket == NULL) {
+		ret = QOS_TASK_ASYNC_NOT_SCHEDULED;
+		goto out;
+	}
+	ret = qos_iops_check(data, bucket);
+out:
+	pthread_mutex_unlock(&share->lock);
+	return ret;
+}
+
+int QoS_Process_iops_pc(compound_data_t *data, uint32_t op_type)
+{
+	qos_client_t *client = op_ctx->client->qos_class;
+	qos_bucket_t *bucket = NULL;
+	int ret = 0;
+
+	LogFullDebug(COMPONENT_QOS, "client:%p ",
+		     &(op_ctx->client->cl_addrbuf));
+	if (client == NULL) {
+		pthread_mutex_lock(&g_qos_lock);
+		/* Since this is QOS_PC, pass the global QOS values */
+		if (op_ctx->client->qos_class == NULL)
+			QoS_perClientInsert(g_qos_config, op_ctx->client);
+
+		client = op_ctx->client->qos_class;
+		pthread_mutex_unlock(&g_qos_lock);
+	}
+
+	if (client->iops_enabled == false)
+		return QOS_TASK_ASYNC_NOT_SCHEDULED;
+
+	pthread_mutex_lock(&client->lock);
+	bucket = qos_get_iops_bucket(client, QOS_CLIENT, op_type);
+	if (bucket == NULL) {
+		ret = QOS_TASK_ASYNC_NOT_SCHEDULED;
+		goto out;
+	}
+	ret = qos_iops_check(data, bucket);
+out:
+	pthread_mutex_unlock(&client->lock);
+	return ret;
+}
+
+int QoS_Process_iops_pspc(compound_data_t *data, uint32_t op_type)
+{
+	qos_share_t *share = op_ctx->ctx_export->qos_class;
+	sockaddr_t *client_addr = &op_ctx->client->cl_addrbuf;
+
+	LogFullDebug(COMPONENT_QOS, "Share:%s ",
+		     op_ctx->ctx_export->cfg_fullpath);
+	if (share == NULL) {
+		/*  Execution reached here means QOS is enabled but,
+		 *  QOS block is not populated for this share
+		 *  so apply the global values to the share values
+		 *  and mark the qos_enabled to false, we need this in case of
+		 *  runtime enablement of QOS*/
+		pthread_mutex_lock(&g_qos_lock);
+		/* On runtime enablement of QOS, or due to only global config
+		 * present, there is possiblity of multiple IO's rushing
+		 * into this function for this paticular share,
+		 * so recheck before going for allocation*/
+		share = op_ctx->ctx_export->qos_class;
+		if (share == NULL) {
+			QoS_perShareInsert(op_ctx->ctx_export, g_qos_config);
+			share = op_ctx->ctx_export->qos_class;
+		}
+		pthread_mutex_unlock(&g_qos_lock);
+	}
+
+	/* Is QOS iops disabled for this particular share */
+	if (share->iops_enabled) {
+		qos_client_t *client = NULL;
+		qos_bucket_t *bucket = NULL;
+
+		client = pspc_get_client(share, client_addr);
+		bucket = qos_get_iops_bucket(client, QOS_CLIENT, op_type);
+		if (bucket == NULL) {
+			goto out;
+		}
+		bucket->iops_consumed += data->argarray_len;
+		data->qos_flags |= IS_QOS_IOPS_ACCOUNTED;
+		qos_iops_deffer_task(bucket, data, data->argarray_len,
+				     get_time_in_usec());
+		return QOS_TASK_ASYNC_SCHEDULED;
+	}
+
+out:
+	return QOS_TASK_ASYNC_NOT_SCHEDULED;
+}
+
+/* On IO differed/rescheduled by QOS will return true else false  */
+unsigned int QoS_Process_iops(compound_data_t *data)
+{
+	unsigned int ret = QOS_TASK_ASYNC_NOT_SCHEDULED;
+	struct gsh_export *export = NULL;
+	struct gsh_client *client = NULL;
+	uint32_t op_type = QOS_WRITE;
+
+	if (g_qos_config->qos_type == QOS_NOT_ENABLED ||
+	    g_qos_config->enable_qos == 0 ||
+	    g_qos_config->enable_iops_control == 0) {
+		return ret;
+	}
+
+	LogFullDebug(COMPONENT_QOS,
+		     "oppos:%d opcode:%d qos_flags:%d isaccouted:%d ",
+		     data->oppos, data->opcode, data->qos_flags,
+		     data->qos_flags & IS_QOS_IOPS_ACCOUNTED);
+
+	if (op_ctx->ctx_export) {
+		export = op_ctx->ctx_export;
+	}
+
+	if (op_ctx->client) {
+		client = op_ctx->client;
+	}
+
+	if (export && strlen(export->cfg_fullpath) <= 2) {
+		LogFullDebug(COMPONENT_QOS, "Seems to be root FH :%s :%ld ",
+			     export->cfg_fullpath,
+			     strlen(export->cfg_fullpath));
+		return ret;
+	}
+
+	qos_thread_check();
+
+	if (g_qos_config->qos_type == QOS_PS_ENABLED && export != NULL) {
+		ret = QoS_Process_iops_ps(data, op_type);
+	} else if (g_qos_config->qos_type == QOS_PC_ENABLED && client != NULL) {
+		ret = QoS_Process_iops_pc(data, op_type);
+	} else if (g_qos_config->qos_type == QOS_PS_PC_ENABLED &&
+		   export != NULL) {
+		ret = QoS_Process_iops_pspc(data, op_type);
+	} else {
+		LogFullDebug(
+			COMPONENT_QOS,
+			" qos_type:%d iops tapper oppos:%d opcode:%d export:%p client:%p",
+			g_qos_config->qos_type, data->oppos, data->opcode,
+			export, client);
+	}
+	LogFullDebug(COMPONENT_QOS, "oppos:%d opcode:%d ret:%d", data->oppos,
+		     data->opcode, ret);
+	return ret;
+}
+
+static inline void resume_iops_bucket(qos_bucket_t *bucket)
+{
+	uint32_t dummy_counter = UINT32_MAX;
+	execute_qos_expired_timers(&(bucket->io_waitlist_qos_iops),
+				   &(bucket->num_ios_waiting), &dummy_counter);
+}
+
+static inline void resume_iops_ps(qos_share_t *share, unsigned int op_type)
+{
+	if (share != NULL) {
+		qos_bucket_t *bucket =
+			qos_get_iops_bucket(share, QOS_SHARE, op_type);
+
+		if (bucket == NULL)
+			return;
+
+		pthread_mutex_lock(&bucket->lock);
+		resume_iops_bucket(bucket);
+		pthread_mutex_unlock(&bucket->lock);
+	}
+}
+
+static inline void resume_iops_pc(qos_client_t *client, unsigned int op_type)
+{
+	if (client != NULL) {
+		qos_bucket_t *bucket =
+			qos_get_iops_bucket(client, QOS_CLIENT, op_type);
+
+		if (bucket == NULL)
+			return;
+
+		pthread_mutex_lock(&bucket->lock);
+		resume_iops_bucket(bucket);
+		pthread_mutex_unlock(&bucket->lock);
+	}
+}
+
+/* since the IO in the queue are already consumed
+ * and is suppose to schedule new IO */
+static inline void pspc_rescedule_iops_to_share(qos_bucket_t *sbucket,
+						qos_bucket_t *cbucket,
+						uint64_t current_time)
+{
+	uint64_t clienttime = current_time;
+	timer_entry_t *io_entry = NULL;
+	uint64_t required_time_for_io = 0;
+
+pick_next_io:
+	io_entry = cbucket->io_waitlist_qos_iops;
+
+	if (io_entry == NULL)
+		return;
+
+	required_time_for_io =
+		(io_entry->size * (USEC_IN_SEC / cbucket->max_iops_allowed));
+
+	/* This check ensures we dont exceed the Client bucket Limit */
+	if (clienttime + IOPS_DELAY_USEC >= cbucket->iops_ldct) {
+		/* below if ensures full IOPS is available for this client
+		 * else indicate share limit has been reached
+		 * so client is trottling */
+		if ((cbucket->iops_ldct + required_time_for_io +
+		     IOPS_SHARE_FW_IO_SCHEDULE) > current_time) {
+			cbucket->iops_ldct =
+				cbucket->iops_ldct + required_time_for_io;
+			io_entry->expiry = cbucket->iops_ldct;
+		} else {
+			cbucket->iops_ldct = current_time;
+			io_entry->expiry = current_time;
+		}
+		cbucket->io_waitlist_qos_iops = io_entry->next;
+		io_entry->next = NULL;
+		insert_timer_entry(&(sbucket->io_waitlist_qos_iops), io_entry);
+		++sbucket->num_ios_waiting;
+		--cbucket->num_ios_waiting;
+
+		/*  Check ensures scheduling future IO till
+		 *  (current_time + IOPS_CLIENT_FW_IO_SCHEDULE) time */
+		if (cbucket->iops_ldct <
+		    (current_time + IOPS_CLIENT_FW_IO_SCHEDULE)) {
+			clienttime = cbucket->iops_ldct;
+			goto pick_next_io;
+		}
+	}
+}
+
+static inline void pspc_reschedule_iops(qos_share_t *share,
+					unsigned int op_type)
+{
+	if (share == NULL)
+		return;
+
+	uint64_t current_time = get_time_in_usec();
+	qos_client_t *client = share->clients;
+	qos_bucket_t *sbucket = qos_get_iops_bucket(share, QOS_PSPC, op_type);
+
+	if (sbucket == NULL)
+		return;
+
+	if (current_time > sbucket->iops_ldct) {
+		pthread_mutex_lock(&sbucket->lock);
+		while (client != NULL) {
+			qos_bucket_t *cbucket = qos_get_iops_bucket(
+				client, QOS_CLIENT, op_type);
+			if (cbucket == NULL) {
+				goto next;
+				return;
+			}
+			pthread_mutex_lock(&cbucket->lock);
+			if (current_time >= cbucket->iops_ldct &&
+			    cbucket->io_waitlist_qos_iops != NULL) {
+				pspc_rescedule_iops_to_share(sbucket, cbucket,
+							     current_time);
+			}
+			pthread_mutex_unlock(&cbucket->lock);
+next:
+			client = client->next;
+		}
+		pthread_mutex_unlock(&sbucket->lock);
+	}
+}
+
+static inline void resume_iops_pspc(qos_share_t *share, unsigned int op_type)
+{
+	if (share == NULL)
+		return;
+
+	uint64_t current_time = get_time_in_usec();
+	int check_delay = ((op_type == QOS_READ) ? IOPS_SHARE_FW_IO_SCHEDULE :
+						   IOPS_DELAY_USEC);
+	qos_bucket_t *bucket = qos_get_iops_bucket(share, QOS_PSPC, op_type);
+
+	if (bucket == NULL)
+		return;
+
+	pthread_mutex_lock(&(bucket->lock));
+	timer_entry_t *io_entry = bucket->io_waitlist_qos_iops;
+
+	/*  Since IO load is not there,
+	 *  its possible again we entered here immediately */
+	while ((io_entry != NULL) &&
+	       (bucket->iops_ldct < (current_time + check_delay))) {
+		uint64_t required_time_for_io =
+			io_entry->size *
+			(USEC_IN_SEC / bucket->max_iops_allowed);
+
+		/* Under heavy IO load, and multiple exports, consider enough
+		 * time looking backward for acutal IOPS calculation
+		 * and consumption
+		 **/
+		if (((bucket->iops_ldct + required_time_for_io +
+		      IOPS_SHARE_FW_IO_SCHEDULE) > current_time)) {
+			/* Resuming IOPS from last IO completion */
+			bucket->iops_ldct =
+				bucket->iops_ldct + required_time_for_io;
+		} else {
+			/* Resuming IOPS from IDLE */
+			bucket->iops_ldct = current_time;
+		}
+
+		--bucket->num_ios_waiting;
+		io_entry->callback(io_entry->args);
+		bucket->io_waitlist_qos_iops = io_entry->next;
+		gsh_free(io_entry);
+		io_entry = bucket->io_waitlist_qos_iops;
+	}
+	pthread_mutex_unlock(&(bucket->lock));
 }

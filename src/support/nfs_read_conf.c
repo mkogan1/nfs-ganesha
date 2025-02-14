@@ -399,13 +399,20 @@ struct config_block nfs_core = {
 
 static struct config_item qos_global_params[] = {
 	CONF_ITEM_BOOL("enable_qos", false, qos_block_config, enable_qos),
+
 	CONF_ITEM_BOOL("enable_tokens", false, qos_block_config, enable_tokens),
 	CONF_ITEM_BOOL("enable_bw_control", false, qos_block_config,
 		       enable_bw_control),
+	CONF_ITEM_BOOL("enable_iops_control", false, qos_block_config,
+		       enable_iops_control),
+
 	CONF_ITEM_BOOL("combined_rw_bw_control", false, qos_block_config,
 		       combined_rw_bw_control),
 	CONF_ITEM_BOOL("combined_rw_token_control", true, qos_block_config,
 		       combined_rw_token_control),
+	CONF_ITEM_BOOL("combined_rw_iops_control", true, qos_block_config,
+		       combined_rw_iops_control),
+
 	CONF_ITEM_UI64("max_export_combined_bw", 0, UINT64_MAX, 86400,
 		       qos_block_config, max_export_combined_bw),
 	CONF_ITEM_UI64("max_client_combined_bw", 0, UINT64_MAX, 86400,
@@ -418,6 +425,20 @@ static struct config_item qos_global_params[] = {
 		       qos_block_config, max_client_write_bw),
 	CONF_ITEM_UI64("max_client_read_bw", 0, UINT64_MAX, 86400,
 		       qos_block_config, max_client_read_bw),
+
+	CONF_ITEM_UI64("max_export_iops", 1, UINT64_MAX, 10, qos_block_config,
+		       max_export_combined_iops),
+	CONF_ITEM_UI64("max_client_iops", 1, UINT64_MAX, 10, qos_block_config,
+		       max_client_combined_iops),
+	CONF_ITEM_UI64("max_export_write_iops", 1, UINT64_MAX, 10,
+		       qos_block_config, max_export_write_iops),
+	CONF_ITEM_UI64("max_export_read_iops", 1, UINT64_MAX, 10,
+		       qos_block_config, max_export_read_iops),
+	CONF_ITEM_UI64("max_client_write_iops", 1, UINT64_MAX, 10,
+		       qos_block_config, max_client_write_iops),
+	CONF_ITEM_UI64("max_client_read_iops", 1, UINT64_MAX, 10,
+		       qos_block_config, max_client_read_iops),
+
 	CONF_ITEM_UI64("max_export_write_tokens", 0, UINT64_MAX, 86400,
 		       qos_block_config, max_export_write_tokens),
 	CONF_ITEM_UI64("max_export_read_tokens", 0, UINT64_MAX, 86400,

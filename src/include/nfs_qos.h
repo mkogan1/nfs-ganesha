@@ -27,6 +27,8 @@
 
 #define IS_QOS_IO (1 << 0)
 #define IS_QOS_IO_READ_BYPASS (1 << 1)
+#define IS_QOS_COMPOUND_IO (1 << 3)
+#define IS_QOS_IOPS_ACCOUNTED (1 << 4)
 
 #define NON_RATELIMITING_IO 0
 #define RATELIMITING_IO 1
@@ -35,6 +37,9 @@
 #define QOS_PS_ENABLED 1
 #define QOS_PC_ENABLED 2
 #define QOS_PS_PC_ENABLED 3
+
+#define QOS_TASK_ASYNC_NOT_SCHEDULED 0
+#define QOS_TASK_ASYNC_SCHEDULED 1
 
 struct qos_op_cb_arg {
 	/* caller_data is mainly the write_data and read_data ptr*/
@@ -79,15 +84,22 @@ typedef struct qos_client_entry {
 typedef struct qos_bucket {
 	pthread_mutex_t lock;
 	uint32_t num_ios_waiting;
+
 	/* BW conrtol, io wait queue */
 	timer_entry_t *io_waitlist_qos_bc;
 	uint64_t max_bw_allowed;
-	/* Used to control BW, Last Data Consumed time */
 	uint64_t bw_ldct;
-	uint64_t tokens_consumed;
+	uint64_t data_consumed;
+
+	timer_entry_t *io_waitlist_qos_iops;
+	uint64_t max_iops_allowed;
+	uint64_t iops_ldct;
+	uint64_t iops_consumed;
+
 	uint64_t max_available_tokens;
+	uint64_t token_ldct;
+	uint64_t tokens_consumed;
 	uint64_t tokens_renew_time; /*   In useconds */
-	uint64_t last_tokens_consumed_time;
 } qos_bucket_t;
 
 /* QOS client specific struture for accounting */
@@ -101,49 +113,64 @@ typedef struct QoS_perClient_Class {
 	/*  Used for waitying IO accounting in case of token exhaust */
 	unsigned int num_ios_waiting;
 	bool bw_enabled;
+	bool iops_enabled;
 	bool token_enabled;
 	bool combined_rw_bw_control;
-	bool combined_rw_token_control;
-	pthread_mutex_t lock;
-	struct qos_bucket read_bucket;
-	struct qos_bucket write_bucket;
-	/* Struture used for saving IO's after token exuast */
-	struct qos_client_entry *client_entries;
-} qos_client_t;
-
-/* QOS share specific struture for accounting */
-typedef struct QoS_perShare_Class {
-	unsigned int share_id;
-	/*  Used for waitying IO accounting in case of token exhaust */
-	unsigned int num_ios_waiting;
-	bool bw_enabled;
-	bool token_enabled;
-	bool combined_rw_bw_control;
+	bool combined_rw_iops_control;
 	bool combined_rw_token_control;
 	/* lock used for adding/removing clients, client_entries etc */
 	pthread_mutex_t lock;
 	struct qos_bucket read_bucket;
 	struct qos_bucket write_bucket;
 	struct QoS_perClient_Class *clients;
-	uint64_t max_client_wbw;
-	uint64_t max_client_rbw;
+	/* Entry is used to store the IO's after token exausted */
+	struct qos_client_entry *client_entries;
+} qos_client_t;
+
+typedef struct QoS_perShare_Class {
+	unsigned int share_id;
+	/*  Used for waitying IO accounting in case of token exhaust */
+	unsigned int num_ios_waiting;
+	bool bw_enabled;
+	bool iops_enabled;
+	bool token_enabled;
+	bool combined_rw_bw_control;
+	bool combined_rw_iops_control;
+	bool combined_rw_token_control;
+	/* lock used for adding/removing clients, client_entries etc */
+	pthread_mutex_t lock;
+	struct qos_bucket read_bucket;
+	struct qos_bucket write_bucket;
+	struct QoS_perClient_Class *clients;
 	/* Entry is used to store the IO's after token exausted */
 	struct qos_client_entry *client_entries;
 } qos_share_t;
 
 typedef struct qos_block_config {
 	bool enable_qos;
+
 	bool enable_tokens;
 	bool enable_bw_control;
+	bool enable_iops_control;
+
 	bool combined_rw_bw_control;
 	bool combined_rw_token_control;
+	bool combined_rw_iops_control;
 	int qos_type;
+
 	uint64_t max_export_combined_bw;
 	uint64_t max_client_combined_bw;
 	uint64_t max_export_write_bw;
 	uint64_t max_export_read_bw;
 	uint64_t max_client_write_bw;
 	uint64_t max_client_read_bw;
+
+	uint64_t max_export_combined_iops;
+	uint64_t max_client_combined_iops;
+	uint64_t max_export_write_iops;
+	uint64_t max_export_read_iops;
+	uint64_t max_client_write_iops;
+	uint64_t max_client_read_iops;
 
 	uint64_t max_export_read_tokens;
 	uint64_t max_export_write_tokens;
@@ -158,6 +185,7 @@ typedef struct qos_block_config {
 extern qos_block_config_t qos_block_config;
 extern struct config_block qos_core;
 extern struct qos_block_config *g_qos_config;
+
 /* Structured for Future Generic Class implementation
 struct Qos_Class
 {
@@ -188,3 +216,5 @@ qos_client_t *pspc_get_client_from_list(qos_client_t *head,
 void copy_gsh_qos_mem(struct gsh_export *dest, struct gsh_export *src);
 void nfs4_qos_write_cb(void *args);
 void nfs4_qos_read_cb(void *args);
+void nfs4_qos_compond_cb(void *args);
+unsigned int QoS_Process_iops(compound_data_t *data);

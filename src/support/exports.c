@@ -470,10 +470,15 @@ static struct config_item qos_block_params[] = {
 	CONF_ITEM_BOOL("enable_token", false, qos_block_config, enable_tokens),
 	CONF_ITEM_BOOL("enable_bw_control", true, qos_block_config,
 		       enable_bw_control),
+	CONF_ITEM_BOOL("enable_iops_control", true, qos_block_config,
+		       enable_iops_control),
+
 	CONF_ITEM_BOOL("combined_rw_bw_control", false, qos_block_config,
 		       combined_rw_bw_control),
-	CONF_ITEM_BOOL("enable_bw_control", true, qos_block_config,
-		       enable_bw_control),
+	CONF_ITEM_BOOL("combined_rw_token_control", true, qos_block_config,
+		       combined_rw_token_control),
+	CONF_ITEM_BOOL("combined_rw_iops_control", true, qos_block_config,
+		       combined_rw_iops_control),
 
 	CONF_ITEM_UI64("qos_type", 1, 3, 3, qos_block_config, qos_type),
 
@@ -489,11 +494,24 @@ static struct config_item qos_block_params[] = {
 		       qos_block_config, max_client_write_bw),
 	CONF_ITEM_UI64("max_client_read_bw", 1048576, 2147483648, 2147483648,
 		       qos_block_config, max_client_read_bw),
+
+	CONF_ITEM_UI64("max_export_iops", 10, 500000, 10, qos_block_config,
+		       max_export_combined_iops),
+	CONF_ITEM_UI64("max_client_iops", 1, 250000, 1, qos_block_config,
+		       max_client_combined_iops),
+	CONF_ITEM_UI64("max_export_write_iops", 10, 500000, 10,
+		       qos_block_config, max_export_write_iops),
+	CONF_ITEM_UI64("max_export_read_iops", 10, 500000, 10, qos_block_config,
+		       max_export_read_iops),
+	CONF_ITEM_UI64("max_client_write_iops", 1, 250000, 1, qos_block_config,
+		       max_client_write_iops),
+	CONF_ITEM_UI64("max_client_read_iops", 1, 250000, 1, qos_block_config,
+		       max_client_read_iops),
+
 	CONF_ITEM_UI64("max_export_tokens", 1024, 2147483648, 214748364,
 		       qos_block_config, max_export_write_tokens),
 	CONF_ITEM_UI64("max_client_tokens", 1024, 2147483648, 214748364,
 		       qos_block_config, max_client_write_tokens),
-
 	/* Enable this block once pnfs with nconnect support is enabled
 	CONF_ITEM_UI64("export_tokens_renew_time",  0, 3600, 100,
 			qos_block_config, export_write_tokens_renew_time),
