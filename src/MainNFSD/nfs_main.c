@@ -579,6 +579,12 @@ int main(int argc, char *argv[])
 			 nfs_param.core_param.enable_dynamic_metrics);
 #endif /* USE_MONITORING */
 
+#ifdef USE_GRPC
+
+	grpc__init(nfs_param.core_param.grpc_port);
+
+#endif /* USE_GRPC */
+
 	/* initialize core subsystems and data structures */
 	if (init_server_pkgs() != 0) {
 		LogCrit(COMPONENT_INIT, "Failed to initialize server packages");
