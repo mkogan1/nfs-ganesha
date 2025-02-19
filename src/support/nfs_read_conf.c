@@ -383,6 +383,11 @@ static struct config_item core_params[] = {
 	CONF_ITEM_BOOL("Enable_Dynamic_Metrics", true, nfs_core_param,
 		       enable_dynamic_metrics),
 #endif
+
+#ifdef USE_GRPC
+	CONF_ITEM_UI16("Grpc_Port", 0,UINT16_MAX, GRPC_PORT,
+			nfs_core_param, grpc_port),
+#endif
 	CONF_ITEM_BOOL("enable_rpc_cred_fallback", false, nfs_core_param,
 		       enable_rpc_cred_fallback),
 	CONF_ITEM_UI32("Unique_Server_Id", 0, UINT32_MAX, 0, nfs_core_param,

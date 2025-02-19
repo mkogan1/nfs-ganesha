@@ -322,6 +322,9 @@ option(TIRPC_EPOLL "platform supports EPOLL or emulation" ON)
 # Build configure options
 goption(USE_DBUS "enable DBUS protocol support" ON)
 
+# Build gRPC
+goption(USE_GRPC "enable gRPC protocol support" OFF)
+
 # Various DBUS enabled features
 option(USE_CB_SIMULATOR "enable callback simulator thread" OFF)
 
@@ -1027,6 +1030,21 @@ if(USE_DBUS)
   endif(NOT DBUS_FOUND)
 endif(USE_DBUS)
 
+gopt_test(USE_GRPC)
+if(USE_GRPC)
+find_package(Protobuf REQUIRED)
+if(NOT Protobuf_FOUND)
+	message(WARNING "Cannot find Protobuf libs. Disabling gRPC,protobuf support")
+	set(USE_GRPC OFF)
+else(NOT Protobuf_FOUND)
+	find_package(gRPC REQUIRED)
+	if(NOT gRPC_FOUND)
+		message(WARNING "Cannot find gRPC libs. Disabling gRPC support")
+		set(USE_GRPC OFF)
+	endif(NOT gRPC_FOUND)
+endif(NOT Protobuf_FOUND)
+endif(USE_GRPC)
+
 if(USE_CB_SIMULATOR AND NOT USE_DBUS)
   message(WARNING "The callback simulator needs DBUS.  Disabling callback simulator")
   set(USE_CB_SIMULATOR OFF)
@@ -1377,6 +1395,11 @@ endif(USE_GTEST)
 if(USE_DBUS)
   add_subdirectory(dbus)
 endif(USE_DBUS)
+
+if(USE_GRPC)
+  add_subdirectory(grpc_server)
+  add_subdirectory(proto)
+endif(USE_GRPC)
 
 if(USE_LTTNG)
   add_subdirectory(tracing)

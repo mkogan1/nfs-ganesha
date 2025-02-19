@@ -86,6 +86,12 @@
 #include "nfs_metrics.h"
 #include "sal_metrics.h"
 #include "gsh_tls.h"
+#endif
+#include "nfs_qos.h"
+
+#ifdef USE_GRPC
+#include "gRPC/GrpcServer.h"
+#endif /*USE_GRPC*/
 
 pthread_mutexattr_t default_mutex_attr;
 pthread_rwlockattr_t default_rwlock_attr;
@@ -1072,6 +1078,12 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
 	/* initializing nfs ganesha metrics */
 	nfs_metrics__init();
 	sal_metrics__init();
+
+#ifdef USE_GRPC
+
+        grpc__init(nfs_param.core_param.grpc_port);
+
+#endif /* USE_GRPC */
 
 	/* acls cache may be needed by exports_pkginit */
 	LogDebug(COMPONENT_INIT, "Now building NFSv4 ACL cache");
