@@ -504,6 +504,34 @@ int nfs_recovery_get_nodeid(char **pnodeid)
 	return rc;
 }
 
+/**
+ * @brief Invokes FSAL specific reclaim capabilities
+ *
+ * If the FSAL need to reclaim the capabilities from the failed node/client
+ * then call this function appropriately
+ */
+int nfs_recovery_fsal_reclaim_client(char *nodeid)
+{
+	/* Module iterator */
+	struct glist_head *mi = NULL;
+	/* Next module */
+	struct glist_head *mn = NULL;
+
+	glist_for_each_safe(mi, mn, &fsal_list)
+	{
+		/* The module to call client reclaim */
+		struct fsal_module *m =
+			glist_entry(mi, struct fsal_module, fsals);
+		if ((strcmp("MDCACHE", m->name) == 0) ||
+		    (strcmp("PSEUDO", m->name) == 0))
+			continue;
+		LogEvent(COMPONENT_STATE, "Calling client reclaim for FSAL %s",
+			 m->name);
+		m->m_ops.fsal_reclaim_client(m, nodeid);
+	}
+	return 0;
+}
+
 void nfs_try_lift_grace(void)
 {
 	bool in_grace = true;
@@ -831,7 +859,7 @@ const char *recovery_backend_str(enum recovery_backend recovery_backend)
 int nfs4_recovery_init(void)
 {
 	LogEvent(COMPONENT_CLIENTID, "Recovery Backend Init for %s",
-		recovery_backend_str(nfs_param.nfsv4_param.recovery_backend));
+		 recovery_backend_str(nfs_param.nfsv4_param.recovery_backend));
 
 	switch (nfs_param.nfsv4_param.recovery_backend) {
 	case RECOVERY_BACKEND_FS:

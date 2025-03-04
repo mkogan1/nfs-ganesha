@@ -44,6 +44,8 @@
 #include "fsal.h"
 #include "gsh_recovery.h"
 
+extern struct glist_head fsal_list;
+
 /**
  * @brief Divisions in state and clientid tables.
  */
@@ -980,6 +982,7 @@ void nfs_wait_for_grace_enforcement(void);
 void nfs_notify_grace_waiters(void);
 void nfs_wait_for_grace_norefs(void);
 void nfs_notify_grace_norefs_waiters(void);
+int nfs_recovery_fsal_reclaim_client(char *nodeid);
 
 /* v4 Client stable-storage database management */
 void nfs4_add_clid(nfs_client_id_t *);

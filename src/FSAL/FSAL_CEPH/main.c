@@ -103,6 +103,9 @@ struct ceph_fsal_module
 				    .expire_time_parent = -1,
 			    } } };
 
+/* ceph mount handle for node takeover activity */
+struct ceph_mount *takeover_cm = NULL;
+
 static int ceph_conf_commit(void *node, void *link_mem, void *self_struct,
 			    struct config_error_type *err_type)
 {
@@ -382,20 +385,69 @@ static int reclaim_reset(struct ceph_mount *cm)
 	/* If this fails, log a message but soldier on */
 	LogDebug(COMPONENT_FSAL, "Issuing reclaim reset for %s", uuid);
 	ceph_status = ceph_start_reclaim(cm->cmount, uuid, CEPH_RECLAIM_RESET);
-	if (ceph_status)
-		LogEvent(COMPONENT_FSAL, "start_reclaim failed: %s",
-			 strerror(-ceph_status));
+	if (ceph_status) {
+		/* Error ENOENT indicates that most likely this is first run
+		 * of this Ganesha instance, so can be ignored. Any other
+		 * failure indicates problem with this ceph client, better
+		 * throw the error and exit */
+		LogEvent(COMPONENT_FSAL, "start_reclaim failed: (%d) %s",
+			 ceph_status, strerror(-ceph_status));
+		if ((-ceph_status) != ENOENT)
+			return ceph_status;
+	}
 	ceph_finish_reclaim(cm->cmount);
 	ceph_set_uuid(cm->cmount, uuid);
 	gsh_free(nodeid);
 	gsh_free(uuid);
 	return 0;
 }
+
+/* ceph client reclaim for takeover of failed node */
+fsal_status_t node_takeover_reclaim(struct fsal_module *module_in, char *nodeid)
+{
+	int ceph_status;
+	char *uuid;
+	size_t len;
+
+	if (takeover_cm == NULL) {
+		LogCrit(COMPONENT_FSAL,
+			"Ceph mount handle for takeover is invalid");
+		return fsalstat(ERR_FSAL_INVAL, 0);
+	}
+	len = strlen(RECLAIM_UUID_PREFIX) + strlen(nodeid) + 1 + 4 + 1;
+	uuid = gsh_malloc(len);
+	/* uuid will be always like "ganesha-node<n>-0001" */
+	(void)snprintf(uuid, len, RECLAIM_UUID_PREFIX "%s-%4.4hx", nodeid, 1);
+
+	/* If this fails, log a message but soldier on */
+	LogDebug(COMPONENT_FSAL, "Issuing reclaim reset for node %s, uuid %s",
+		 nodeid, uuid);
+	ceph_status = ceph_start_reclaim(takeover_cm->cmount, uuid,
+					 CEPH_RECLAIM_RESET);
+	if (ceph_status) {
+		/* Error ENOENT indicates that most likely this is first run
+		 * of this Ganesha instance, so can be ignored. Any other
+		 * failure indicates problem with this ceph client, better
+		 * throw the error and exit */
+		LogEvent(COMPONENT_FSAL,
+			 "Ceph client reclaim failed (Node %s): %s", nodeid,
+			 strerror(-ceph_status));
+		if ((-ceph_status) != ENOENT)
+			return ceph2fsal_error(ceph_status);
+	}
+	ceph_finish_reclaim(takeover_cm->cmount);
+	gsh_free(uuid);
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+}
 #undef RECLAIM_UUID_PREFIX
 #else
 static inline int reclaim_reset(struct ceph_mount *cm)
 {
 	return 0;
+}
+fsal_status node_takeover_reclaim(char *nodeid)
+{
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 #endif
 
@@ -455,8 +507,8 @@ static void ino_release_cb(void *handle, vinodeno_t vino)
 
 /* Callback for inode invalidation. This callback is triggered when ceph client
  * cache is invalidated due to file attribute change */
-static void ino_invalidate_cb(void *handle, vinodeno_t vino,
-		int64_t offset, int64_t len)
+static void ino_invalidate_cb(void *handle, vinodeno_t vino, int64_t offset,
+			      int64_t len)
 {
 	struct ceph_mount *cm = handle;
 	struct ceph_handle_key key;
@@ -471,9 +523,9 @@ static void ino_invalidate_cb(void *handle, vinodeno_t vino,
 	key.export_id = cm->cm_export_id;
 	fh_desc.addr = &key;
 	fh_desc.len = sizeof(key);
-	cm->cm_export->export.up_ops->invalidate(
-				cm->cm_export->export.up_ops, &fh_desc,
-				FSAL_UP_INVALIDATE_CACHE);
+	cm->cm_export->export.up_ops->invalidate(cm->cm_export->export.up_ops,
+						 &fh_desc,
+						 FSAL_UP_INVALIDATE_CACHE);
 }
 
 static mode_t umask_cb(void *handle)
@@ -724,6 +776,11 @@ static fsal_status_t create_export(struct fsal_module *module_in,
 		goto error;
 	}
 
+	/* Store the ceph mount handle for future use for takeover activity */
+	takeover_cm = cm;
+	LogDebug(COMPONENT_FSAL, "Ceph mount handle for takeover activity %p",
+		 takeover_cm);
+
 	ceph_status = ceph_mount(cm->cmount, cm->cm_mount_path);
 
 	if (ceph_status != 0) {
@@ -822,6 +879,7 @@ error:
 		gsh_free(cm->cm_secret_key);
 
 		gsh_free(cm);
+		cm = NULL;
 	}
 
 	gsh_free(export);
@@ -861,6 +919,7 @@ MODULE_INIT void init(void)
 #endif /* CEPH_PNFS */
 	myself->m_ops.create_export = create_export;
 	myself->m_ops.init_config = init_config;
+	myself->m_ops.fsal_reclaim_client = node_takeover_reclaim;
 
 	/* Initialize the fsal_obj_handle ops for FSAL CEPH */
 	handle_ops_init(&CephFSM.handle_ops);

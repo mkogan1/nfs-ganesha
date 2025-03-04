@@ -792,6 +792,19 @@ struct fsal_ops {
  */
 	void (*fsal_reset_stats)(struct fsal_module *const fsal_hdl);
 
+	/**
+ * @brief FSAL function to reclaim the client capabilities.
+ * This functionality will be required by FSALs, which are distributed
+ * in nature, and the client need to reclaim the capability to continue
+ * its operation. For example ceph client on failover need to reclaim
+ * its capabilities then only all FS related ops are possible.
+ *
+ * @param[in] fsal_hdl          FSAL module
+ * @return FSAL status
+ */
+	fsal_status_t (*fsal_reclaim_client)(struct fsal_module *const fsal_hdl,
+					     char *nodeid);
+
 	/**@}*/
 };
 

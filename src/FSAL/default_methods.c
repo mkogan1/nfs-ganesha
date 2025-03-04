@@ -277,6 +277,18 @@ static void fsal_reset_stats(struct fsal_module *const fsal_hdl)
 	LogDebug(COMPONENT_FSAL, "Invoking unsupported FSAL operation");
 }
 
+/**
+ * @brief FSAL function to reclaim the client capabilities
+ *
+ * @param[in] fsal_hdl          FSAL module
+ */
+static fsal_status_t fsal_reclaim_client(struct fsal_module *const fsal_hdl,
+					 char *nodeid)
+{
+	LogDebug(COMPONENT_FSAL, "Invoking unsupported FSAL operation");
+	return fsalstat(ERR_FSAL_NOTSUPP, ENOTSUP);
+}
+
 /* Default fsal module method vector.
  * copied to allocated vector at register time
  */
@@ -295,6 +307,7 @@ struct fsal_ops def_fsal_ops = {
 	.fsal_pnfs_ds_ops = fsal_pnfs_ds_ops,
 	.fsal_extract_stats = fsal_extract_stats,
 	.fsal_reset_stats = fsal_reset_stats,
+	.fsal_reclaim_client = fsal_reclaim_client,
 };
 
 /* get_name

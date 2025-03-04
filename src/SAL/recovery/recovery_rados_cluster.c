@@ -334,6 +334,15 @@ static void rados_cluster_read_clids(nfs_grace_start_t *gsp,
 	if (gsp && (gsp->event != EVENT_JUST_GRACE))
 		set_recovery_object_for_takeover(gsp);
 
+	/* ceph client reclaim action for nodeid takeover */
+	if (takeover && (gsp->event == EVENT_TAKE_NODEID)) {
+		ret = nfs_recovery_fsal_reclaim_client(object_takeover);
+		if (ret)
+			LogCrit(COMPONENT_CLIENTID,
+				"Ceph client reclaim failed: nodeid %s",
+				object_takeover);
+	}
+
 	/* Start or join a grace period */
 	ret = rados_grace_join(rados_recov_io_ctx, rados_kv_param.grace_oid,
 			       nodeid, &cur, &rec, true);
