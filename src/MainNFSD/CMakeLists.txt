@@ -159,6 +159,13 @@ if(USE_DBUS)
   )
 endif(USE_DBUS)
 
+if(USE_GRPC)
+	set(ganesha_nfsd_OBJS
+		${ganesha_nfsd_OBJS}
+		$<TARGET_OBJECTS:gRPCLibrary>
+	)
+endif(USE_GRPC)
+
 if(USE_NLM)
   set(ganesha_nfsd_OBJS
     ${ganesha_nfsd_OBJS}
@@ -200,6 +207,14 @@ target_link_libraries(ganesha_nfsd
   ${MOOSHIKA_LIBRARIES}
   ${MONITORING_LIBRARIES}
 )
+
+if(USE_GRPC)
+	target_link_libraries(ganesha_nfsd
+		PRIVATE
+		gRPC::grpc++
+		protobuf::libprotobuf
+		grpc++_reflection)
+endif (USE_GRPC)
 
 if (USE_LTTNG)
 target_link_libraries(ganesha_nfsd ganesha_trace_symbols)

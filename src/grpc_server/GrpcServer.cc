@@ -22,26 +22,47 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
-#include "GrpcServer.h"
+#include "gRPC/GrpcServer.h"
 #include "nfsService.grpc.pb.h"
-#include "nfsServiceServer.h"
+#include "nfsService.h"
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
-//#include <grpcpp/plugin.h>
-//#include <grpcpp/reflection/reflection.h>
 
 #define GRPCERROR(MESSAGE)                                                    \
         fprintf(stderr, "[%s:%d] %s: %s\n", __FILE__, __LINE__, (MESSAGE), \
                 strerror(errno))
 #define GRPCFATAL(MESSAGE) (GRPCERROR(MESSAGE), abort())
 
-GrpcServer ganesha_grpc_server;
+/* start and stop grpc server*/
+class GrpcServer {
+    public:
+            GrpcServer();
+            void start(uint16_t port);
+            void stop(void);
+            ~GrpcServer();
+
+    //private:
+        bool running_ = false;
+        std::thread server_thread_;
+        std::mutex mutex_;
+
+        // Delete copy/move constructor/assignment
+        GrpcServer(const GrpcServer &) = delete;
+        GrpcServer &operator=(const GrpcServer &) = delete;
+        GrpcServer(GrpcServer &&) = delete;
+        GrpcServer &operator=(GrpcServer &&) = delete;
+
+        //static void *server_thread_(void *arg);
+        std::unique_ptr<grpc::Server> server_;
+} ganesha_grpc_server;
 
 GrpcServer::GrpcServer() : running_(false) {}
 
+// stop gRPC server
 GrpcServer::~GrpcServer() {
     stop();
 }
 
+// start gRPC server
 void GrpcServer::start(uint16_t port)
 {
         const std::lock_guard<std::mutex> lock(mutex_);
@@ -63,19 +84,15 @@ void GrpcServer::start(uint16_t port)
 	GetSessionIdService getClientSessionIds;
 	builder.RegisterService(&getClientSessionIds);
 
-	//grpc::reflection.Register(server_);
 	// For grpc CLI
-	//grpc::reflection::ProtoServerReflectionPlugin reflection_plugin;
-	//builder.RegisterService(&reflection_plugin);
-
-	//grpc::reflection::EnableServerReflection(service, &builder);
 	grpc::reflection::InitProtoReflectionServerBuilderPlugin();
 	server_ = builder.BuildAndStart();
 	if (!server_) {
 		GRPCFATAL(("Failed to start server on %s" + server_address).c_str());
 	}
     	running_ = true;
-	server_thread_ = std::thread([this]() { server_->Wait(); });
+	LogCrit(COMPONENT_GRPC, "Grpc Server is running");
+	/*server_thread_ = std::thread([this]() {*/ server_->Wait();// });
 }
 
 void GrpcServer::stop()
@@ -87,6 +104,7 @@ void GrpcServer::stop()
 		if (server_thread_.joinable()) {
 			server_thread_.join();  // Wait for the server thread to finish
 		}
+		LogCrit(COMPONENT_GRPC, "Grpc Server stopped");
         }
 }
 
@@ -97,7 +115,8 @@ void grpc__init(uint16_t port)
         static bool initialized = false;
         if (initialized)
                 return;
-        ganesha_grpc_server.start(port);
+        ganesha_grpc_server.server_thread_ = std::thread([port]() {ganesha_grpc_server.start(port);});
+	LogCrit(COMPONENT_GRPC, "Grpc Server started");
         initialized = true;
 }
 

@@ -26,11 +26,12 @@ include_directories(${gRPC_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 set(SOURCE_FILES ${CMAKE_SOURCE_DIR}/grpc_server/GrpcServer.cc
-            ${CMAKE_SOURCE_DIR}/proto/nfsService.pb.cc
-            ${CMAKE_SOURCE_DIR}/proto/nfsService.grpc.pb.cc
-            ${CMAKE_SOURCE_DIR}/grpc_server/nfsServiceClient.cpp)
+	${CMAKE_SOURCE_DIR}/proto/nfsService.pb.cc
+	${CMAKE_SOURCE_DIR}/proto/nfsService.grpc.pb.cc
+	${CMAKE_SOURCE_DIR}/grpc_server/nfsServiceClient.cpp
+	${CMAKE_SOURCE_DIR}/grpc_server/nfsServiceServer.cpp)
 
-add_library(gRPCLibrary SHARED ${SOURCE_FILES})
+add_library(gRPCLibrary OBJECT ${SOURCE_FILES})
 target_link_libraries(gRPCLibrary
                       PRIVATE
                       gRPC::grpc++
@@ -42,5 +43,7 @@ target_link_libraries(gRPCLibrary
 	                  ${PROTOBUF_INCLUDE_DIR}
 	                   ${CMAKE_SOURCE_DIR}/proto
 	         	   ${CMAKE_SOURCE_DIR}/grpc_server)
+set_target_properties(gRPCLibrary PROPERTIES COMPILE_FLAGS "-fPIC")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic-errors -Werror -Wall")
 install(TARGETS gRPCLibrary LIBRARY DESTINATION ${LIB_INSTALL_DIR})
 

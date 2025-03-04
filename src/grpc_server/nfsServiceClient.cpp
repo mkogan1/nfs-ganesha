@@ -24,28 +24,20 @@
 #include <string>
 
 void GetClientIds( const std::string& server_address) {
-    // Creating a channel to communicate with the server
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
-    std::unique_ptr<nfsService::GetClientId::Stub> stub = nfsService::GetClientId::NewStub(channel);
+	// Creating an insecure channel to communicate with the server
+	std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
+	std::unique_ptr<nfsService::GetClientId::Stub> stub = nfsService::GetClientId::NewStub(channel);
 
-    // Creating a request and response
-    nfsService::GetClientIdsRequest request;
-    nfsService::GetClientIdsResponse response;
-    grpc::ClientContext context;
+	// Creating a request and response
+	nfsService::GetClientIdsRequest request;
+	nfsService::GetClientIdsResponse response;
+	grpc::ClientContext context;
 
-    // Make the gRPC call
-    grpc::Status status = stub->GetClientIds(&context, request, &response);
+    	// it's a client call.
+	context.AddMetadata("client-type", "custom-client");
+	// Make the gRPC call
+	grpc::Status status = stub->GetClientIds(&context, request, &response);
 
-    if (status.ok()) {
-        std::cout << "Client IDs: ";
-        for (int i = 0; i < response.client_ids_size(); ++i) {
-            //LogWarn(COMPONENT_GRPC, "%s", errormsg);
-		std::cout << response.client_ids(i) << " ";
-        }
-        std::cout << std::endl;
-    } else {
-        std::cout << "gRPC call failed: " << status.error_message() << std::endl;
-    }
 }
 
 void GetNfsGracePeriod(const std::string& server_address) {
@@ -58,14 +50,11 @@ void GetNfsGracePeriod(const std::string& server_address) {
 	nfsService::GetNfsGraceResponse response;
 	grpc::ClientContext context;
 
+	// it's a client call.
+	context.AddMetadata("client-type", "custom-client");
+
 	// Make the gRPC call
 	grpc::Status status = stub->GetGracePeriod(&context, request, &response);
-
-	if (status.ok()) {
-        	std::cout << "NFS in grace: " << response.ingrace();
-    	} else {
-        	std::cout << "gRPC call failed: " << status.error_message() << std::endl;
-    	}
 
 }
 
@@ -79,16 +68,9 @@ void GetClientSessionIds(const std::string& server_address) {
         nfsService::GetSessionIdsResponse response;
         grpc::ClientContext context;
 
+	// it's a client call.
+	context.AddMetadata("client-type", "custom-client");
 	// Make the gRPC call
         grpc::Status status = stub->GetSessionIds(&context, request, &response);
-
-	if (status.ok()) {
-		std::cout << "GetSessionIds response received:" << std::endl;
-        	for (const std::string& session_id : response.session_ids()) {
-            	std::cout << session_id << std::endl;
-        }
-    	} else {
-        	std::cerr << "RPC failed with status: " << status.error_message() << std::endl;
-    	}
 
 }
