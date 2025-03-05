@@ -217,6 +217,11 @@ typedef enum protos {
 #define CORE_OPTION_NFS_RDMA 0x00000010 /*< RPC/RDMA v1 NFS listener */
 
 /**
+ * @brief Support GRPC
+ */
+#define GRPC_PORT 50051
+
+/**
  * @brief Support NFSv3 and NFSv4.
  */
 #ifdef _USE_NFS3
@@ -560,6 +565,12 @@ typedef struct nfs_core_param {
 	 * For more info, see:
 	 * https://git.kernel.org/torvalds/p/8d19f1c8e1937baf74e1962aae9f90fa3aeab463 */
 	bool allow_set_io_flusher_fail;
+
+#ifdef USE_GRPC
+	/** gRPC port number. */
+	int16_t grpc_port;
+#endif
+
 } nfs_core_parameter_t;
 
 /** @} */
