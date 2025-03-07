@@ -84,6 +84,9 @@ void GrpcServer::start(uint16_t port)
 	GetSessionIdService getClientSessionIds;
 	builder.RegisterService(&getClientSessionIds);
 
+	StartNfsGraceService startNfsGrace;
+	builder.RegisterService(&startNfsGrace);
+
 	// For grpc CLI
 	grpc::reflection::InitProtoReflectionServerBuilderPlugin();
 	server_ = builder.BuildAndStart();

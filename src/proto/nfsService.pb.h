@@ -46,7 +46,7 @@ struct TableStruct_nfsService_2eproto {
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
   static const ::PROTOBUF_NAMESPACE_ID::internal::AuxiliaryParseTableField aux[]
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
-  static const ::PROTOBUF_NAMESPACE_ID::internal::ParseTable schema[6]
+  static const ::PROTOBUF_NAMESPACE_ID::internal::ParseTable schema[8]
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
   static const ::PROTOBUF_NAMESPACE_ID::internal::FieldMetadata field_metadata[];
   static const ::PROTOBUF_NAMESPACE_ID::internal::SerializationTable serialization_table[];
@@ -72,6 +72,12 @@ extern GetSessionIdsRequestDefaultTypeInternal _GetSessionIdsRequest_default_ins
 class GetSessionIdsResponse;
 class GetSessionIdsResponseDefaultTypeInternal;
 extern GetSessionIdsResponseDefaultTypeInternal _GetSessionIdsResponse_default_instance_;
+class GraceStatus;
+class GraceStatusDefaultTypeInternal;
+extern GraceStatusDefaultTypeInternal _GraceStatus_default_instance_;
+class GraceWithEvent;
+class GraceWithEventDefaultTypeInternal;
+extern GraceWithEventDefaultTypeInternal _GraceWithEvent_default_instance_;
 }  // namespace nfsService
 PROTOBUF_NAMESPACE_OPEN
 template<> ::nfsService::GetClientIdsRequest* Arena::CreateMaybeMessage<::nfsService::GetClientIdsRequest>(Arena*);
@@ -80,6 +86,8 @@ template<> ::nfsService::GetNfsGraceRequest* Arena::CreateMaybeMessage<::nfsServ
 template<> ::nfsService::GetNfsGraceResponse* Arena::CreateMaybeMessage<::nfsService::GetNfsGraceResponse>(Arena*);
 template<> ::nfsService::GetSessionIdsRequest* Arena::CreateMaybeMessage<::nfsService::GetSessionIdsRequest>(Arena*);
 template<> ::nfsService::GetSessionIdsResponse* Arena::CreateMaybeMessage<::nfsService::GetSessionIdsResponse>(Arena*);
+template<> ::nfsService::GraceStatus* Arena::CreateMaybeMessage<::nfsService::GraceStatus>(Arena*);
+template<> ::nfsService::GraceWithEvent* Arena::CreateMaybeMessage<::nfsService::GraceWithEvent>(Arena*);
 PROTOBUF_NAMESPACE_CLOSE
 namespace nfsService {
 
@@ -617,6 +625,325 @@ class GetNfsGraceResponse PROTOBUF_FINAL :
 };
 // -------------------------------------------------------------------
 
+class GraceWithEvent PROTOBUF_FINAL :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:nfsService.GraceWithEvent) */ {
+ public:
+  inline GraceWithEvent() : GraceWithEvent(nullptr) {}
+  virtual ~GraceWithEvent();
+
+  GraceWithEvent(const GraceWithEvent& from);
+  GraceWithEvent(GraceWithEvent&& from) noexcept
+    : GraceWithEvent() {
+    *this = ::std::move(from);
+  }
+
+  inline GraceWithEvent& operator=(const GraceWithEvent& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline GraceWithEvent& operator=(GraceWithEvent&& from) noexcept {
+    if (GetArena() == from.GetArena()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return GetMetadataStatic().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return GetMetadataStatic().reflection;
+  }
+  static const GraceWithEvent& default_instance();
+
+  static inline const GraceWithEvent* internal_default_instance() {
+    return reinterpret_cast<const GraceWithEvent*>(
+               &_GraceWithEvent_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    4;
+
+  friend void swap(GraceWithEvent& a, GraceWithEvent& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(GraceWithEvent* other) {
+    if (other == this) return;
+    if (GetArena() == other->GetArena()) {
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(GraceWithEvent* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline GraceWithEvent* New() const final {
+    return CreateMaybeMessage<GraceWithEvent>(nullptr);
+  }
+
+  GraceWithEvent* New(::PROTOBUF_NAMESPACE_ID::Arena* arena) const final {
+    return CreateMaybeMessage<GraceWithEvent>(arena);
+  }
+  void CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void CopyFrom(const GraceWithEvent& from);
+  void MergeFrom(const GraceWithEvent& from);
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  ::PROTOBUF_NAMESPACE_ID::uint8* _InternalSerialize(
+      ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  inline void SharedCtor();
+  inline void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(GraceWithEvent* other);
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "nfsService.GraceWithEvent";
+  }
+  protected:
+  explicit GraceWithEvent(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+  private:
+  static ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadataStatic() {
+    ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(&::descriptor_table_nfsService_2eproto);
+    return ::descriptor_table_nfsService_2eproto.file_level_metadata[kIndexInFileMessages];
+  }
+
+  public:
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kIpAddrFieldNumber = 3,
+    kEventFieldNumber = 1,
+    kNodeIdFieldNumber = 2,
+  };
+  // string IpAddr = 3;
+  void clear_ipaddr();
+  const std::string& ipaddr() const;
+  void set_ipaddr(const std::string& value);
+  void set_ipaddr(std::string&& value);
+  void set_ipaddr(const char* value);
+  void set_ipaddr(const char* value, size_t size);
+  std::string* mutable_ipaddr();
+  std::string* release_ipaddr();
+  void set_allocated_ipaddr(std::string* ipaddr);
+  private:
+  const std::string& _internal_ipaddr() const;
+  void _internal_set_ipaddr(const std::string& value);
+  std::string* _internal_mutable_ipaddr();
+  public:
+
+  // int32 Event = 1;
+  void clear_event();
+  ::PROTOBUF_NAMESPACE_ID::int32 event() const;
+  void set_event(::PROTOBUF_NAMESPACE_ID::int32 value);
+  private:
+  ::PROTOBUF_NAMESPACE_ID::int32 _internal_event() const;
+  void _internal_set_event(::PROTOBUF_NAMESPACE_ID::int32 value);
+  public:
+
+  // int32 NodeId = 2;
+  void clear_nodeid();
+  ::PROTOBUF_NAMESPACE_ID::int32 nodeid() const;
+  void set_nodeid(::PROTOBUF_NAMESPACE_ID::int32 value);
+  private:
+  ::PROTOBUF_NAMESPACE_ID::int32 _internal_nodeid() const;
+  void _internal_set_nodeid(::PROTOBUF_NAMESPACE_ID::int32 value);
+  public:
+
+  // @@protoc_insertion_point(class_scope:nfsService.GraceWithEvent)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr ipaddr_;
+  ::PROTOBUF_NAMESPACE_ID::int32 event_;
+  ::PROTOBUF_NAMESPACE_ID::int32 nodeid_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_nfsService_2eproto;
+};
+// -------------------------------------------------------------------
+
+class GraceStatus PROTOBUF_FINAL :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:nfsService.GraceStatus) */ {
+ public:
+  inline GraceStatus() : GraceStatus(nullptr) {}
+  virtual ~GraceStatus();
+
+  GraceStatus(const GraceStatus& from);
+  GraceStatus(GraceStatus&& from) noexcept
+    : GraceStatus() {
+    *this = ::std::move(from);
+  }
+
+  inline GraceStatus& operator=(const GraceStatus& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline GraceStatus& operator=(GraceStatus&& from) noexcept {
+    if (GetArena() == from.GetArena()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return GetMetadataStatic().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return GetMetadataStatic().reflection;
+  }
+  static const GraceStatus& default_instance();
+
+  static inline const GraceStatus* internal_default_instance() {
+    return reinterpret_cast<const GraceStatus*>(
+               &_GraceStatus_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    5;
+
+  friend void swap(GraceStatus& a, GraceStatus& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(GraceStatus* other) {
+    if (other == this) return;
+    if (GetArena() == other->GetArena()) {
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(GraceStatus* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline GraceStatus* New() const final {
+    return CreateMaybeMessage<GraceStatus>(nullptr);
+  }
+
+  GraceStatus* New(::PROTOBUF_NAMESPACE_ID::Arena* arena) const final {
+    return CreateMaybeMessage<GraceStatus>(arena);
+  }
+  void CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void CopyFrom(const GraceStatus& from);
+  void MergeFrom(const GraceStatus& from);
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  ::PROTOBUF_NAMESPACE_ID::uint8* _InternalSerialize(
+      ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  inline void SharedCtor();
+  inline void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(GraceStatus* other);
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "nfsService.GraceStatus";
+  }
+  protected:
+  explicit GraceStatus(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+  private:
+  static ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadataStatic() {
+    ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(&::descriptor_table_nfsService_2eproto);
+    return ::descriptor_table_nfsService_2eproto.file_level_metadata[kIndexInFileMessages];
+  }
+
+  public:
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kResponseMsgFieldNumber = 2,
+    kGraceStartedFieldNumber = 1,
+  };
+  // string response_msg = 2;
+  void clear_response_msg();
+  const std::string& response_msg() const;
+  void set_response_msg(const std::string& value);
+  void set_response_msg(std::string&& value);
+  void set_response_msg(const char* value);
+  void set_response_msg(const char* value, size_t size);
+  std::string* mutable_response_msg();
+  std::string* release_response_msg();
+  void set_allocated_response_msg(std::string* response_msg);
+  private:
+  const std::string& _internal_response_msg() const;
+  void _internal_set_response_msg(const std::string& value);
+  std::string* _internal_mutable_response_msg();
+  public:
+
+  // bool graceStarted = 1;
+  void clear_gracestarted();
+  bool gracestarted() const;
+  void set_gracestarted(bool value);
+  private:
+  bool _internal_gracestarted() const;
+  void _internal_set_gracestarted(bool value);
+  public:
+
+  // @@protoc_insertion_point(class_scope:nfsService.GraceStatus)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr response_msg_;
+  bool gracestarted_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_nfsService_2eproto;
+};
+// -------------------------------------------------------------------
+
 class GetSessionIdsRequest PROTOBUF_FINAL :
     public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:nfsService.GetSessionIdsRequest) */ {
  public:
@@ -658,7 +985,7 @@ class GetSessionIdsRequest PROTOBUF_FINAL :
                &_GetSessionIdsRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    4;
+    6;
 
   friend void swap(GetSessionIdsRequest& a, GetSessionIdsRequest& b) {
     a.Swap(&b);
@@ -781,7 +1108,7 @@ class GetSessionIdsResponse PROTOBUF_FINAL :
                &_GetSessionIdsResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    5;
+    7;
 
   friend void swap(GetSessionIdsResponse& a, GetSessionIdsResponse& b) {
     a.Swap(&b);
@@ -981,6 +1308,196 @@ inline void GetNfsGraceResponse::set_ingrace(bool value) {
 
 // -------------------------------------------------------------------
 
+// GraceWithEvent
+
+// int32 Event = 1;
+inline void GraceWithEvent::clear_event() {
+  event_ = 0;
+}
+inline ::PROTOBUF_NAMESPACE_ID::int32 GraceWithEvent::_internal_event() const {
+  return event_;
+}
+inline ::PROTOBUF_NAMESPACE_ID::int32 GraceWithEvent::event() const {
+  // @@protoc_insertion_point(field_get:nfsService.GraceWithEvent.Event)
+  return _internal_event();
+}
+inline void GraceWithEvent::_internal_set_event(::PROTOBUF_NAMESPACE_ID::int32 value) {
+  
+  event_ = value;
+}
+inline void GraceWithEvent::set_event(::PROTOBUF_NAMESPACE_ID::int32 value) {
+  _internal_set_event(value);
+  // @@protoc_insertion_point(field_set:nfsService.GraceWithEvent.Event)
+}
+
+// int32 NodeId = 2;
+inline void GraceWithEvent::clear_nodeid() {
+  nodeid_ = 0;
+}
+inline ::PROTOBUF_NAMESPACE_ID::int32 GraceWithEvent::_internal_nodeid() const {
+  return nodeid_;
+}
+inline ::PROTOBUF_NAMESPACE_ID::int32 GraceWithEvent::nodeid() const {
+  // @@protoc_insertion_point(field_get:nfsService.GraceWithEvent.NodeId)
+  return _internal_nodeid();
+}
+inline void GraceWithEvent::_internal_set_nodeid(::PROTOBUF_NAMESPACE_ID::int32 value) {
+  
+  nodeid_ = value;
+}
+inline void GraceWithEvent::set_nodeid(::PROTOBUF_NAMESPACE_ID::int32 value) {
+  _internal_set_nodeid(value);
+  // @@protoc_insertion_point(field_set:nfsService.GraceWithEvent.NodeId)
+}
+
+// string IpAddr = 3;
+inline void GraceWithEvent::clear_ipaddr() {
+  ipaddr_.ClearToEmpty();
+}
+inline const std::string& GraceWithEvent::ipaddr() const {
+  // @@protoc_insertion_point(field_get:nfsService.GraceWithEvent.IpAddr)
+  return _internal_ipaddr();
+}
+inline void GraceWithEvent::set_ipaddr(const std::string& value) {
+  _internal_set_ipaddr(value);
+  // @@protoc_insertion_point(field_set:nfsService.GraceWithEvent.IpAddr)
+}
+inline std::string* GraceWithEvent::mutable_ipaddr() {
+  // @@protoc_insertion_point(field_mutable:nfsService.GraceWithEvent.IpAddr)
+  return _internal_mutable_ipaddr();
+}
+inline const std::string& GraceWithEvent::_internal_ipaddr() const {
+  return ipaddr_.Get();
+}
+inline void GraceWithEvent::_internal_set_ipaddr(const std::string& value) {
+  
+  ipaddr_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArena());
+}
+inline void GraceWithEvent::set_ipaddr(std::string&& value) {
+  
+  ipaddr_.Set(
+    ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, ::std::move(value), GetArena());
+  // @@protoc_insertion_point(field_set_rvalue:nfsService.GraceWithEvent.IpAddr)
+}
+inline void GraceWithEvent::set_ipaddr(const char* value) {
+  GOOGLE_DCHECK(value != nullptr);
+  
+  ipaddr_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, ::std::string(value), GetArena());
+  // @@protoc_insertion_point(field_set_char:nfsService.GraceWithEvent.IpAddr)
+}
+inline void GraceWithEvent::set_ipaddr(const char* value,
+    size_t size) {
+  
+  ipaddr_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, ::std::string(
+      reinterpret_cast<const char*>(value), size), GetArena());
+  // @@protoc_insertion_point(field_set_pointer:nfsService.GraceWithEvent.IpAddr)
+}
+inline std::string* GraceWithEvent::_internal_mutable_ipaddr() {
+  
+  return ipaddr_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArena());
+}
+inline std::string* GraceWithEvent::release_ipaddr() {
+  // @@protoc_insertion_point(field_release:nfsService.GraceWithEvent.IpAddr)
+  return ipaddr_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+}
+inline void GraceWithEvent::set_allocated_ipaddr(std::string* ipaddr) {
+  if (ipaddr != nullptr) {
+    
+  } else {
+    
+  }
+  ipaddr_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ipaddr,
+      GetArena());
+  // @@protoc_insertion_point(field_set_allocated:nfsService.GraceWithEvent.IpAddr)
+}
+
+// -------------------------------------------------------------------
+
+// GraceStatus
+
+// bool graceStarted = 1;
+inline void GraceStatus::clear_gracestarted() {
+  gracestarted_ = false;
+}
+inline bool GraceStatus::_internal_gracestarted() const {
+  return gracestarted_;
+}
+inline bool GraceStatus::gracestarted() const {
+  // @@protoc_insertion_point(field_get:nfsService.GraceStatus.graceStarted)
+  return _internal_gracestarted();
+}
+inline void GraceStatus::_internal_set_gracestarted(bool value) {
+  
+  gracestarted_ = value;
+}
+inline void GraceStatus::set_gracestarted(bool value) {
+  _internal_set_gracestarted(value);
+  // @@protoc_insertion_point(field_set:nfsService.GraceStatus.graceStarted)
+}
+
+// string response_msg = 2;
+inline void GraceStatus::clear_response_msg() {
+  response_msg_.ClearToEmpty();
+}
+inline const std::string& GraceStatus::response_msg() const {
+  // @@protoc_insertion_point(field_get:nfsService.GraceStatus.response_msg)
+  return _internal_response_msg();
+}
+inline void GraceStatus::set_response_msg(const std::string& value) {
+  _internal_set_response_msg(value);
+  // @@protoc_insertion_point(field_set:nfsService.GraceStatus.response_msg)
+}
+inline std::string* GraceStatus::mutable_response_msg() {
+  // @@protoc_insertion_point(field_mutable:nfsService.GraceStatus.response_msg)
+  return _internal_mutable_response_msg();
+}
+inline const std::string& GraceStatus::_internal_response_msg() const {
+  return response_msg_.Get();
+}
+inline void GraceStatus::_internal_set_response_msg(const std::string& value) {
+  
+  response_msg_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, value, GetArena());
+}
+inline void GraceStatus::set_response_msg(std::string&& value) {
+  
+  response_msg_.Set(
+    ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, ::std::move(value), GetArena());
+  // @@protoc_insertion_point(field_set_rvalue:nfsService.GraceStatus.response_msg)
+}
+inline void GraceStatus::set_response_msg(const char* value) {
+  GOOGLE_DCHECK(value != nullptr);
+  
+  response_msg_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, ::std::string(value), GetArena());
+  // @@protoc_insertion_point(field_set_char:nfsService.GraceStatus.response_msg)
+}
+inline void GraceStatus::set_response_msg(const char* value,
+    size_t size) {
+  
+  response_msg_.Set(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, ::std::string(
+      reinterpret_cast<const char*>(value), size), GetArena());
+  // @@protoc_insertion_point(field_set_pointer:nfsService.GraceStatus.response_msg)
+}
+inline std::string* GraceStatus::_internal_mutable_response_msg() {
+  
+  return response_msg_.Mutable(::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr::EmptyDefault{}, GetArena());
+}
+inline std::string* GraceStatus::release_response_msg() {
+  // @@protoc_insertion_point(field_release:nfsService.GraceStatus.response_msg)
+  return response_msg_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+}
+inline void GraceStatus::set_allocated_response_msg(std::string* response_msg) {
+  if (response_msg != nullptr) {
+    
+  } else {
+    
+  }
+  response_msg_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), response_msg,
+      GetArena());
+  // @@protoc_insertion_point(field_set_allocated:nfsService.GraceStatus.response_msg)
+}
+
+// -------------------------------------------------------------------
+
 // GetSessionIdsRequest
 
 // -------------------------------------------------------------------
@@ -1064,6 +1581,10 @@ GetSessionIdsResponse::mutable_session_ids() {
 #ifdef __GNUC__
   #pragma GCC diagnostic pop
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------

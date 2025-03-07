@@ -18,6 +18,7 @@
  * -------------
  */
 
+#include <string>
 #include "nfsService.h"
 
 grpc::Status
@@ -94,6 +95,46 @@ GetNfsGraceService::GetGracePeriod(grpc::ServerContext* context,
 		std::cerr << "Error occurred: " << ex.what() << std::endl;
 		return grpc::Status(grpc::StatusCode::INTERNAL, "Internal error occurred");
 	} //try catch block
+}
+
+grpc::Status StartNfsGraceService::StartGraceWithEvent(grpc::ServerContext* context,
+				const nfsService::GraceWithEvent* request,
+				nfsService::GraceStatus* response) {
+	int ret;
+	int event = request->event();
+	int nodeid = request->nodeid();
+	std::string ip_addr = request->ipaddr();
+	std::string resp;
+	nfs_grace_start_t gsp;
+
+	// Carry out required action
+	gsp.nodeid = nodeid;
+	gsp.event = event;
+	gsp.ipaddr = (char *)ip_addr.c_str();
+        do {
+                ret = nfs_start_grace(&gsp);
+                /*
+                 * grace could fail if there are refs taken.
+                 * wait for no refs and retry.
+                 */
+                if (ret == -EAGAIN) {
+                        //LogEvent(COMPONENT_DBUS, "Retry grace");
+                        nfs_wait_for_grace_norefs();
+                } else if (ret) {
+                        //LogCrit(COMPONENT_DBUS, "Start grace failed %d", ret);
+                        resp = ("Unable to start grace");
+			response->set_gracestarted(false);
+                        break;
+                }
+        } while (ret);
+	// Send back the response
+	if (!ret) {
+		resp = ("Grace started succesfully");
+		response->set_gracestarted(true);
+	}
+	response->set_response_msg(resp);
+
+	return grpc::Status::OK;
 }
 
 grpc::Status 

@@ -74,3 +74,18 @@ void GetClientSessionIds(const std::string& server_address) {
         grpc::Status status = stub->GetSessionIds(&context, request, &response);
 
 }
+
+void StartGraceWithEvent(const std::string& server_address)
+{
+	// Creating a channel to communicate with the server
+	std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
+	std::unique_ptr<nfsService::StartNfsGrace::Stub> stub = nfsService::StartNfsGrace::NewStub(channel);
+
+	// Creating a request and response
+	nfsService::GraceWithEvent request;
+        nfsService::GraceStatus response;
+        grpc::ClientContext context;
+
+	// Make the gRPC call
+        grpc::Status status = stub->StartGraceWithEvent(&context, request, &response);
+}

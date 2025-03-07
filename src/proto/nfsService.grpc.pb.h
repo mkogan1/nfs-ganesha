@@ -255,6 +255,8 @@ class GetClientId final {
   typedef WithStreamedUnaryMethod_GetClientIds<Service > StreamedService;
 };
 
+// Grace related requests
+//
 // Get if nfs in grace
 class GetNfsGrace final {
  public:
@@ -461,6 +463,214 @@ class GetNfsGrace final {
   typedef WithStreamedUnaryMethod_GetGracePeriod<Service > StreamedUnaryService;
   typedef Service SplitStreamedService;
   typedef WithStreamedUnaryMethod_GetGracePeriod<Service > StreamedService;
+};
+
+// Invoke grace period on the NFS Ganesha
+class StartNfsGrace final {
+ public:
+  static constexpr char const* service_full_name() {
+    return "nfsService.StartNfsGrace";
+  }
+  class StubInterface {
+   public:
+    virtual ~StubInterface() {}
+    virtual ::grpc::Status StartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::nfsService::GraceStatus* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::nfsService::GraceStatus>> AsyncStartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::nfsService::GraceStatus>>(AsyncStartGraceWithEventRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::nfsService::GraceStatus>> PrepareAsyncStartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::nfsService::GraceStatus>>(PrepareAsyncStartGraceWithEventRaw(context, request, cq));
+    }
+    class async_interface {
+     public:
+      virtual ~async_interface() {}
+      virtual void StartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent* request, ::nfsService::GraceStatus* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void StartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent* request, ::nfsService::GraceStatus* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+    };
+    typedef class async_interface experimental_async_interface;
+    virtual class async_interface* async() { return nullptr; }
+    class async_interface* experimental_async() { return async(); }
+   private:
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::nfsService::GraceStatus>* AsyncStartGraceWithEventRaw(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::nfsService::GraceStatus>* PrepareAsyncStartGraceWithEventRaw(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::grpc::CompletionQueue* cq) = 0;
+  };
+  class Stub final : public StubInterface {
+   public:
+    Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options = ::grpc::StubOptions());
+    ::grpc::Status StartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::nfsService::GraceStatus* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::nfsService::GraceStatus>> AsyncStartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::nfsService::GraceStatus>>(AsyncStartGraceWithEventRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::nfsService::GraceStatus>> PrepareAsyncStartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::nfsService::GraceStatus>>(PrepareAsyncStartGraceWithEventRaw(context, request, cq));
+    }
+    class async final :
+      public StubInterface::async_interface {
+     public:
+      void StartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent* request, ::nfsService::GraceStatus* response, std::function<void(::grpc::Status)>) override;
+      void StartGraceWithEvent(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent* request, ::nfsService::GraceStatus* response, ::grpc::ClientUnaryReactor* reactor) override;
+     private:
+      friend class Stub;
+      explicit async(Stub* stub): stub_(stub) { }
+      Stub* stub() { return stub_; }
+      Stub* stub_;
+    };
+    class async* async() override { return &async_stub_; }
+
+   private:
+    std::shared_ptr< ::grpc::ChannelInterface> channel_;
+    class async async_stub_{this};
+    ::grpc::ClientAsyncResponseReader< ::nfsService::GraceStatus>* AsyncStartGraceWithEventRaw(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::nfsService::GraceStatus>* PrepareAsyncStartGraceWithEventRaw(::grpc::ClientContext* context, const ::nfsService::GraceWithEvent& request, ::grpc::CompletionQueue* cq) override;
+    const ::grpc::internal::RpcMethod rpcmethod_StartGraceWithEvent_;
+  };
+  static std::unique_ptr<Stub> NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options = ::grpc::StubOptions());
+
+  class Service : public ::grpc::Service {
+   public:
+    Service();
+    virtual ~Service();
+    virtual ::grpc::Status StartGraceWithEvent(::grpc::ServerContext* context, const ::nfsService::GraceWithEvent* request, ::nfsService::GraceStatus* response);
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_StartGraceWithEvent : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_StartGraceWithEvent() {
+      ::grpc::Service::MarkMethodAsync(0);
+    }
+    ~WithAsyncMethod_StartGraceWithEvent() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status StartGraceWithEvent(::grpc::ServerContext* /*context*/, const ::nfsService::GraceWithEvent* /*request*/, ::nfsService::GraceStatus* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestStartGraceWithEvent(::grpc::ServerContext* context, ::nfsService::GraceWithEvent* request, ::grpc::ServerAsyncResponseWriter< ::nfsService::GraceStatus>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  typedef WithAsyncMethod_StartGraceWithEvent<Service > AsyncService;
+  template <class BaseClass>
+  class WithCallbackMethod_StartGraceWithEvent : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithCallbackMethod_StartGraceWithEvent() {
+      ::grpc::Service::MarkMethodCallback(0,
+          new ::grpc::internal::CallbackUnaryHandler< ::nfsService::GraceWithEvent, ::nfsService::GraceStatus>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::nfsService::GraceWithEvent* request, ::nfsService::GraceStatus* response) { return this->StartGraceWithEvent(context, request, response); }));}
+    void SetMessageAllocatorFor_StartGraceWithEvent(
+        ::grpc::MessageAllocator< ::nfsService::GraceWithEvent, ::nfsService::GraceStatus>* allocator) {
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(0);
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::nfsService::GraceWithEvent, ::nfsService::GraceStatus>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~WithCallbackMethod_StartGraceWithEvent() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status StartGraceWithEvent(::grpc::ServerContext* /*context*/, const ::nfsService::GraceWithEvent* /*request*/, ::nfsService::GraceStatus* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* StartGraceWithEvent(
+      ::grpc::CallbackServerContext* /*context*/, const ::nfsService::GraceWithEvent* /*request*/, ::nfsService::GraceStatus* /*response*/)  { return nullptr; }
+  };
+  typedef WithCallbackMethod_StartGraceWithEvent<Service > CallbackService;
+  typedef CallbackService ExperimentalCallbackService;
+  template <class BaseClass>
+  class WithGenericMethod_StartGraceWithEvent : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_StartGraceWithEvent() {
+      ::grpc::Service::MarkMethodGeneric(0);
+    }
+    ~WithGenericMethod_StartGraceWithEvent() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status StartGraceWithEvent(::grpc::ServerContext* /*context*/, const ::nfsService::GraceWithEvent* /*request*/, ::nfsService::GraceStatus* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_StartGraceWithEvent : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_StartGraceWithEvent() {
+      ::grpc::Service::MarkMethodRaw(0);
+    }
+    ~WithRawMethod_StartGraceWithEvent() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status StartGraceWithEvent(::grpc::ServerContext* /*context*/, const ::nfsService::GraceWithEvent* /*request*/, ::nfsService::GraceStatus* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestStartGraceWithEvent(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawCallbackMethod_StartGraceWithEvent : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawCallbackMethod_StartGraceWithEvent() {
+      ::grpc::Service::MarkMethodRawCallback(0,
+          new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->StartGraceWithEvent(context, request, response); }));
+    }
+    ~WithRawCallbackMethod_StartGraceWithEvent() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status StartGraceWithEvent(::grpc::ServerContext* /*context*/, const ::nfsService::GraceWithEvent* /*request*/, ::nfsService::GraceStatus* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* StartGraceWithEvent(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_StartGraceWithEvent : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_StartGraceWithEvent() {
+      ::grpc::Service::MarkMethodStreamed(0,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::nfsService::GraceWithEvent, ::nfsService::GraceStatus>(
+            [this](::grpc::ServerContext* context,
+                   ::grpc::ServerUnaryStreamer<
+                     ::nfsService::GraceWithEvent, ::nfsService::GraceStatus>* streamer) {
+                       return this->StreamedStartGraceWithEvent(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_StartGraceWithEvent() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status StartGraceWithEvent(::grpc::ServerContext* /*context*/, const ::nfsService::GraceWithEvent* /*request*/, ::nfsService::GraceStatus* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedStartGraceWithEvent(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::nfsService::GraceWithEvent,::nfsService::GraceStatus>* server_unary_streamer) = 0;
+  };
+  typedef WithStreamedUnaryMethod_StartGraceWithEvent<Service > StreamedUnaryService;
+  typedef Service SplitStreamedService;
+  typedef WithStreamedUnaryMethod_StartGraceWithEvent<Service > StreamedService;
 };
 
 // Get session ids 

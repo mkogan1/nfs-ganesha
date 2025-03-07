@@ -55,6 +55,13 @@ public:
                                 nfsService::GetNfsGraceResponse* response) override;
 };
 
+class StartNfsGraceService final : public nfsService::StartNfsGrace::Service {
+public:
+        grpc::Status StartGraceWithEvent(grpc::ServerContext* context,
+                                const nfsService::GraceWithEvent* request,
+                                nfsService::GraceStatus* response) override;
+};
+
 class GetSessionIdService final: public nfsService::GetSessionId::Service {
         public:
                 grpc::Status GetSessionIds(grpc::ServerContext* context,

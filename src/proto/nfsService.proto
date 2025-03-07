@@ -34,6 +34,8 @@ message GetClientIdsResponse {
     repeated uint64 client_ids = 1;  // List of client IDs
 }
 
+// Grace related requests
+
 // Get if nfs in grace
 service GetNfsGrace {
     rpc GetGracePeriod (GetNfsGraceRequest) returns (GetNfsGraceResponse);
@@ -46,6 +48,21 @@ message GetNfsGraceResponse {
     bool ingrace = 1;  // Whether the system is in grace period
 }
 
+// Invoke grace period on the NFS Ganesha
+service StartNfsGrace {
+    rpc StartGraceWithEvent (GraceWithEvent) returns (GraceStatus);
+}
+
+message GraceWithEvent {
+    int32 Event = 1;
+    int32 NodeId = 2;
+    string IpAddr = 3;
+}
+
+message GraceStatus {
+    bool graceStarted = 1;
+    string response_msg = 2;
+}
 
 // Get session ids 
 service GetSessionId {
