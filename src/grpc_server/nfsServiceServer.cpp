@@ -32,11 +32,6 @@ GetClientIdService::GetClientIds(grpc::ServerContext* context,
 	nfs_client_id_t *pclientid;
         struct hash_data *pdata = NULL;
 
-	// adding medata search to differntiate between grpc_cli call
-	// and client api call
-	auto metadata = context->client_metadata();
-	auto it = metadata.find("client-type");
-
 	for (uint32_t i = 0; i < ht->parameter.index_size; ++i) {
 		struct rbt_head* head_rbt = &(ht->partitions[i].rbt);
 
@@ -55,16 +50,10 @@ GetClientIdService::GetClientIds(grpc::ServerContext* context,
 
 	// Add the client IDs to the response
 	for (auto& id : client_ids) {
-		if (it != metadata.end() && it->second != "custom-client") {
-			//grpc_cli call
-			std::cout << "client id: " << id << std::endl;
-		} else {
-			response->add_client_ids(id);  // Adds client ID to the repeated field
-		} // check if the call is from client api or grpc_cli
+		response->add_client_ids(id);  // Adds client ID to the repeated field
 	} // for loop
 	return grpc::Status::OK;
 	} catch(const std::exception& ex) {
-		std::cerr << "Error occurred: " << ex.what() << std::endl;
 		return grpc::Status(grpc::StatusCode::INTERNAL, "Internal error occurred");
 	} // try catch block
 }
@@ -75,20 +64,10 @@ GetNfsGraceService::GetGracePeriod(grpc::ServerContext* context,
 				nfsService::GetNfsGraceResponse* response) {
 	try {
 
-        // adding medata search to differntiate between grpc_cli call
-        // and client api call
-	auto metadata = context->client_metadata();
-	auto it = metadata.find("client-type");
-
 	bool ingrace = nfs_in_grace();  // Function to check if in grace period
         // Set the response
-	std::cout << "We are nfs in grace" <<std::endl;
-	if (it != metadata.end() && it->second != "custom-client") {
-		// grpc_cli call
-		std::cout << "Nfs in grace: " << ingrace <<std::endl;
-	} else {
-		response->set_ingrace(ingrace);
-	}
+
+	response->set_ingrace(ingrace);
 	
 	return grpc::Status::OK;
 	} catch (const std::exception& ex) {
@@ -150,11 +129,6 @@ GetSessionIdService::GetSessionIds(grpc::ServerContext* context,
 	char* session_id = (char *)alloca(2 * NFS4_SESSIONID_SIZE);
 	nfs41_session_t* session_data;
 
-        // adding medata search to differntiate between grpc_cli call
-        // and client api call
-	auto metadata = context->client_metadata();
-	auto it = metadata.find("client-type");
-
 	for (i = 0; i < ht->parameter.index_size; i++) {
 		head_rbt = &(ht->partitions[i].rbt);
 		PTHREAD_RWLOCK_wrlock(&(ht->partitions[i].ht_lock));
@@ -162,14 +136,8 @@ GetSessionIdService::GetSessionIds(grpc::ServerContext* context,
 			pdata = (hash_data*)RBT_OPAQ(pn);
 			session_data = (nfs41_session_t*)pdata->val.addr;
 			b64_ntop((unsigned char*)session_data->session_id, NFS4_SESSIONID_SIZE, session_id, (2 * NFS4_SESSIONID_SIZE));
-
 			// Set the response
-			if (it != metadata.end() && it->second != "custom-client") {
-				// grpc_cli call
-				std::cout << "session id: " << session_id << std::endl;
-			} else {
-				response->add_session_ids(session_id);
-			}
+			response->add_session_ids(session_id);
 			RBT_INCREMENT(pn);
             	}
 		PTHREAD_RWLOCK_unlock(&(ht->partitions[i].ht_lock));

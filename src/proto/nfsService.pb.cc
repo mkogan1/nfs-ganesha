@@ -173,12 +173,13 @@ const ::PROTOBUF_NAMESPACE_ID::uint32 TableStruct_nfsService_2eproto::offsets[] 
   ~0u,  // no _extensions_
   ~0u,  // no _oneof_case_
   ~0u,  // no _weak_field_map_
-  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::nfsService::GetNfsGraceResponse, _has_bits_),
   PROTOBUF_FIELD_OFFSET(::nfsService::GetNfsGraceResponse, _internal_metadata_),
   ~0u,  // no _extensions_
   ~0u,  // no _oneof_case_
   ~0u,  // no _weak_field_map_
   PROTOBUF_FIELD_OFFSET(::nfsService::GetNfsGraceResponse, ingrace_),
+  0,
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::nfsService::GraceWithEvent, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -210,11 +211,11 @@ static const ::PROTOBUF_NAMESPACE_ID::internal::MigrationSchema schemas[] PROTOB
   { 0, -1, sizeof(::nfsService::GetClientIdsRequest)},
   { 5, -1, sizeof(::nfsService::GetClientIdsResponse)},
   { 11, -1, sizeof(::nfsService::GetNfsGraceRequest)},
-  { 16, -1, sizeof(::nfsService::GetNfsGraceResponse)},
-  { 22, -1, sizeof(::nfsService::GraceWithEvent)},
-  { 30, -1, sizeof(::nfsService::GraceStatus)},
-  { 37, -1, sizeof(::nfsService::GetSessionIdsRequest)},
-  { 42, -1, sizeof(::nfsService::GetSessionIdsResponse)},
+  { 16, 22, sizeof(::nfsService::GetNfsGraceResponse)},
+  { 23, -1, sizeof(::nfsService::GraceWithEvent)},
+  { 31, -1, sizeof(::nfsService::GraceStatus)},
+  { 38, -1, sizeof(::nfsService::GetSessionIdsRequest)},
+  { 43, -1, sizeof(::nfsService::GetSessionIdsResponse)},
 };
 
 static ::PROTOBUF_NAMESPACE_ID::Message const * const file_default_instances[] = {
@@ -232,22 +233,23 @@ const char descriptor_table_protodef_nfsService_2eproto[] PROTOBUF_SECTION_VARIA
   "\n\020nfsService.proto\022\nnfsService\"\025\n\023GetCli"
   "entIdsRequest\"*\n\024GetClientIdsResponse\022\022\n"
   "\nclient_ids\030\001 \003(\004\"\024\n\022GetNfsGraceRequest\""
-  "&\n\023GetNfsGraceResponse\022\017\n\007ingrace\030\001 \001(\010\""
-  "\?\n\016GraceWithEvent\022\r\n\005Event\030\001 \001(\005\022\016\n\006Node"
-  "Id\030\002 \001(\005\022\016\n\006IpAddr\030\003 \001(\t\"9\n\013GraceStatus\022"
-  "\024\n\014graceStarted\030\001 \001(\010\022\024\n\014response_msg\030\002 "
-  "\001(\t\"\026\n\024GetSessionIdsRequest\",\n\025GetSessio"
-  "nIdsResponse\022\023\n\013session_ids\030\001 \003(\t2`\n\013Get"
-  "ClientId\022Q\n\014GetClientIds\022\037.nfsService.Ge"
-  "tClientIdsRequest\032 .nfsService.GetClient"
-  "IdsResponse2`\n\013GetNfsGrace\022Q\n\016GetGracePe"
-  "riod\022\036.nfsService.GetNfsGraceRequest\032\037.n"
-  "fsService.GetNfsGraceResponse2[\n\rStartNf"
-  "sGrace\022J\n\023StartGraceWithEvent\022\032.nfsServi"
-  "ce.GraceWithEvent\032\027.nfsService.GraceStat"
-  "us2d\n\014GetSessionId\022T\n\rGetSessionIds\022 .nf"
-  "sService.GetSessionIdsRequest\032!.nfsServi"
-  "ce.GetSessionIdsResponseb\006proto3"
+  "7\n\023GetNfsGraceResponse\022\024\n\007ingrace\030\001 \001(\010H"
+  "\000\210\001\001B\n\n\010_ingrace\"\?\n\016GraceWithEvent\022\r\n\005Ev"
+  "ent\030\001 \001(\005\022\016\n\006NodeId\030\002 \001(\005\022\016\n\006IpAddr\030\003 \001("
+  "\t\"9\n\013GraceStatus\022\024\n\014graceStarted\030\001 \001(\010\022\024"
+  "\n\014response_msg\030\002 \001(\t\"\026\n\024GetSessionIdsReq"
+  "uest\",\n\025GetSessionIdsResponse\022\023\n\013session"
+  "_ids\030\001 \003(\t2`\n\013GetClientId\022Q\n\014GetClientId"
+  "s\022\037.nfsService.GetClientIdsRequest\032 .nfs"
+  "Service.GetClientIdsResponse2`\n\013GetNfsGr"
+  "ace\022Q\n\016GetGracePeriod\022\036.nfsService.GetNf"
+  "sGraceRequest\032\037.nfsService.GetNfsGraceRe"
+  "sponse2[\n\rStartNfsGrace\022J\n\023StartGraceWit"
+  "hEvent\022\032.nfsService.GraceWithEvent\032\027.nfs"
+  "Service.GraceStatus2d\n\014GetSessionId\022T\n\rG"
+  "etSessionIds\022 .nfsService.GetSessionIdsR"
+  "equest\032!.nfsService.GetSessionIdsRespons"
+  "eb\006proto3"
   ;
 static const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable*const descriptor_table_nfsService_2eproto_deps[1] = {
 };
@@ -263,7 +265,7 @@ static ::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase*const descriptor_table_nfs
 };
 static ::PROTOBUF_NAMESPACE_ID::internal::once_flag descriptor_table_nfsService_2eproto_once;
 const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable descriptor_table_nfsService_2eproto = {
-  false, false, descriptor_table_protodef_nfsService_2eproto, "nfsService.proto", 752,
+  false, false, descriptor_table_protodef_nfsService_2eproto, "nfsService.proto", 769,
   &descriptor_table_nfsService_2eproto_once, descriptor_table_nfsService_2eproto_sccs, descriptor_table_nfsService_2eproto_deps, 8, 0,
   schemas, file_default_instances, TableStruct_nfsService_2eproto::offsets,
   file_level_metadata_nfsService_2eproto, 8, file_level_enum_descriptors_nfsService_2eproto, file_level_service_descriptors_nfsService_2eproto,
@@ -807,6 +809,10 @@ void GetNfsGraceRequest::InternalSwap(GetNfsGraceRequest* other) {
 
 class GetNfsGraceResponse::_Internal {
  public:
+  using HasBits = decltype(std::declval<GetNfsGraceResponse>()._has_bits_);
+  static void set_has_ingrace(HasBits* has_bits) {
+    (*has_bits)[0] |= 1u;
+  }
 };
 
 GetNfsGraceResponse::GetNfsGraceResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena)
@@ -816,7 +822,8 @@ GetNfsGraceResponse::GetNfsGraceResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena)
   // @@protoc_insertion_point(arena_constructor:nfsService.GetNfsGraceResponse)
 }
 GetNfsGraceResponse::GetNfsGraceResponse(const GetNfsGraceResponse& from)
-  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  : ::PROTOBUF_NAMESPACE_ID::Message(),
+      _has_bits_(from._has_bits_) {
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
   ingrace_ = from.ingrace_;
   // @@protoc_insertion_point(copy_constructor:nfsService.GetNfsGraceResponse)
@@ -858,11 +865,13 @@ void GetNfsGraceResponse::Clear() {
   (void) cached_has_bits;
 
   ingrace_ = false;
+  _has_bits_.Clear();
   _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
 }
 
 const char* GetNfsGraceResponse::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
 #define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  _Internal::HasBits has_bits{};
   while (!ctx->Done(&ptr)) {
     ::PROTOBUF_NAMESPACE_ID::uint32 tag;
     ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
@@ -871,6 +880,7 @@ const char* GetNfsGraceResponse::_InternalParse(const char* ptr, ::PROTOBUF_NAME
       // bool ingrace = 1;
       case 1:
         if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 8)) {
+          _Internal::set_has_ingrace(&has_bits);
           ingrace_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
           CHK_(ptr);
         } else goto handle_unusual;
@@ -890,6 +900,7 @@ const char* GetNfsGraceResponse::_InternalParse(const char* ptr, ::PROTOBUF_NAME
     }  // switch
   }  // while
 success:
+  _has_bits_.Or(has_bits);
   return ptr;
 failure:
   ptr = nullptr;
@@ -904,7 +915,7 @@ failure:
   (void) cached_has_bits;
 
   // bool ingrace = 1;
-  if (this->ingrace() != 0) {
+  if (_internal_has_ingrace()) {
     target = stream->EnsureSpace(target);
     target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteBoolToArray(1, this->_internal_ingrace(), target);
   }
@@ -926,7 +937,8 @@ size_t GetNfsGraceResponse::ByteSizeLong() const {
   (void) cached_has_bits;
 
   // bool ingrace = 1;
-  if (this->ingrace() != 0) {
+  cached_has_bits = _has_bits_[0];
+  if (cached_has_bits & 0x00000001u) {
     total_size += 1 + 1;
   }
 
@@ -961,7 +973,7 @@ void GetNfsGraceResponse::MergeFrom(const GetNfsGraceResponse& from) {
   ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
 
-  if (from.ingrace() != 0) {
+  if (from._internal_has_ingrace()) {
     _internal_set_ingrace(from._internal_ingrace());
   }
 }
@@ -987,6 +999,7 @@ bool GetNfsGraceResponse::IsInitialized() const {
 void GetNfsGraceResponse::InternalSwap(GetNfsGraceResponse* other) {
   using std::swap;
   _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
+  swap(_has_bits_[0], other->_has_bits_[0]);
   swap(ingrace_, other->ingrace_);
 }
 

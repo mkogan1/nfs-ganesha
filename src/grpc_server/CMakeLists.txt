@@ -44,6 +44,5 @@ target_link_libraries(gRPCLibrary
 	                   ${CMAKE_SOURCE_DIR}/proto
 	         	   ${CMAKE_SOURCE_DIR}/grpc_server)
 set_target_properties(gRPCLibrary PROPERTIES COMPILE_FLAGS "-fPIC")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic-errors -Werror -Wall")
 install(TARGETS gRPCLibrary LIBRARY DESTINATION ${LIB_INSTALL_DIR})
 

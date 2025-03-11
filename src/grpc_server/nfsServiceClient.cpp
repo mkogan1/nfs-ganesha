@@ -33,8 +33,6 @@ void GetClientIds( const std::string& server_address) {
 	nfsService::GetClientIdsResponse response;
 	grpc::ClientContext context;
 
-    	// it's a client call.
-	context.AddMetadata("client-type", "custom-client");
 	// Make the gRPC call
 	grpc::Status status = stub->GetClientIds(&context, request, &response);
 
@@ -49,9 +47,6 @@ void GetNfsGracePeriod(const std::string& server_address) {
 	nfsService::GetNfsGraceRequest request;
 	nfsService::GetNfsGraceResponse response;
 	grpc::ClientContext context;
-
-	// it's a client call.
-	context.AddMetadata("client-type", "custom-client");
 
 	// Make the gRPC call
 	grpc::Status status = stub->GetGracePeriod(&context, request, &response);
@@ -68,8 +63,6 @@ void GetClientSessionIds(const std::string& server_address) {
         nfsService::GetSessionIdsResponse response;
         grpc::ClientContext context;
 
-	// it's a client call.
-	context.AddMetadata("client-type", "custom-client");
 	// Make the gRPC call
         grpc::Status status = stub->GetSessionIds(&context, request, &response);
 

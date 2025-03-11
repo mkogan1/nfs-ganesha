@@ -45,7 +45,7 @@ message GetNfsGraceRequest {
 }
 
 message GetNfsGraceResponse {
-    bool ingrace = 1;  // Whether the system is in grace period
+    optional bool ingrace = 1;  // Whether the system is in grace period
 }
 
 // Invoke grace period on the NFS Ganesha

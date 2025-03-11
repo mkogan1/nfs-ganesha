@@ -38,11 +38,11 @@ class GrpcServer {
             GrpcServer();
             void start(uint16_t port);
             void stop(void);
+	    std::thread server_thread_;
             ~GrpcServer();
 
-    //private:
+    private:
         bool running_ = false;
-        std::thread server_thread_;
         std::mutex mutex_;
 
         // Delete copy/move constructor/assignment
@@ -51,7 +51,6 @@ class GrpcServer {
         GrpcServer(GrpcServer &&) = delete;
         GrpcServer &operator=(GrpcServer &&) = delete;
 
-        //static void *server_thread_(void *arg);
         std::unique_ptr<grpc::Server> server_;
 } ganesha_grpc_server;
 
@@ -95,7 +94,7 @@ void GrpcServer::start(uint16_t port)
 	}
     	running_ = true;
 	LogCrit(COMPONENT_GRPC, "Grpc Server is running");
-	/*server_thread_ = std::thread([this]() {*/ server_->Wait();// });
+	server_->Wait();
 }
 
 void GrpcServer::stop()
@@ -107,7 +106,6 @@ void GrpcServer::stop()
 		if (server_thread_.joinable()) {
 			server_thread_.join();  // Wait for the server thread to finish
 		}
-		LogCrit(COMPONENT_GRPC, "Grpc Server stopped");
         }
 }
 
@@ -119,7 +117,6 @@ void grpc__init(uint16_t port)
         if (initialized)
                 return;
         ganesha_grpc_server.server_thread_ = std::thread([port]() {ganesha_grpc_server.start(port);});
-	LogCrit(COMPONENT_GRPC, "Grpc Server started");
         initialized = true;
 }
 

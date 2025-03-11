@@ -604,6 +604,10 @@ class GetNfsGraceResponse PROTOBUF_FINAL :
     kIngraceFieldNumber = 1,
   };
   // bool ingrace = 1;
+  bool has_ingrace() const;
+  private:
+  bool _internal_has_ingrace() const;
+  public:
   void clear_ingrace();
   bool ingrace() const;
   void set_ingrace(bool value);
@@ -619,8 +623,9 @@ class GetNfsGraceResponse PROTOBUF_FINAL :
   template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
   typedef void InternalArenaConstructable_;
   typedef void DestructorSkippable_;
-  bool ingrace_;
+  ::PROTOBUF_NAMESPACE_ID::internal::HasBits<1> _has_bits_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  bool ingrace_;
   friend struct ::TableStruct_nfsService_2eproto;
 };
 // -------------------------------------------------------------------
@@ -1287,8 +1292,16 @@ GetClientIdsResponse::mutable_client_ids() {
 // GetNfsGraceResponse
 
 // bool ingrace = 1;
+inline bool GetNfsGraceResponse::_internal_has_ingrace() const {
+  bool value = (_has_bits_[0] & 0x00000001u) != 0;
+  return value;
+}
+inline bool GetNfsGraceResponse::has_ingrace() const {
+  return _internal_has_ingrace();
+}
 inline void GetNfsGraceResponse::clear_ingrace() {
   ingrace_ = false;
+  _has_bits_[0] &= ~0x00000001u;
 }
 inline bool GetNfsGraceResponse::_internal_ingrace() const {
   return ingrace_;
@@ -1298,7 +1311,7 @@ inline bool GetNfsGraceResponse::ingrace() const {
   return _internal_ingrace();
 }
 inline void GetNfsGraceResponse::_internal_set_ingrace(bool value) {
-  
+  _has_bits_[0] |= 0x00000001u;
   ingrace_ = value;
 }
 inline void GetNfsGraceResponse::set_ingrace(bool value) {
