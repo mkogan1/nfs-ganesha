@@ -1034,7 +1034,6 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
 #ifdef USE_GRPC
 
         grpc__init(nfs_param.core_param.grpc_port);
-        LogWarn(COMPONENT_MAIN, "gRPC initialized");
 
 #endif /* USE_GRPC */
 

@@ -54,10 +54,6 @@
 #include "monitoring.h"
 #endif /* USE_MONITORING */
 
-/*#ifdef USE_GRPC
-#include "GrpcServer.h"
-#endif USE_GRPC*/
-
 #ifdef LINUX
 #include <sys/prctl.h>
 #ifndef PR_SET_IO_FLUSHER
@@ -582,17 +578,6 @@ int main(int argc, char *argv[])
 	monitoring__init(nfs_param.core_param.monitoring_port,
 			 nfs_param.core_param.enable_dynamic_metrics);
 #endif /* USE_MONITORING */
-
-	/*LogWarn(COMPONENT_INIT, "gRPC is going to get initialized");
-	LogWarn(COMPONENT_MAIN, "gRPC is going to get initialized");
-	fprintf(stderr, "Avani grpc is going to get initialized\n");
-#ifdef USE_GRPC
-
-	grpc__init(nfs_param.core_param.grpc_port);
-	LogWarn(COMPONENT_MAIN, "gRPC initialized");
-	fprintf(stderr, "Avani grpc initialized yayyyyyyy!\n");
-
-#endif USE_GRPC */
 
 	/* initialize core subsystems and data structures */
 	if (init_server_pkgs() != 0) {

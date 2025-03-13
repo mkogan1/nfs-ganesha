@@ -93,7 +93,6 @@ void GrpcServer::start(uint16_t port)
 		GRPCFATAL(("Failed to start server on %s" + server_address).c_str());
 	}
     	running_ = true;
-	LogCrit(COMPONENT_GRPC, "Grpc Server is running");
 	server_->Wait();
 }
 
