@@ -411,6 +411,8 @@ static void *client_init(void *link_mem, void *self_struct)
 		return NULL;
 	}
 }
+
+#ifdef ENABLE_QOS
 static void *qos_block_init(void *link_mem, void *self_struct);
 static int qos_block_commit(void *node, void *link_mem, void *self_struct,
 			    struct config_error_type *err_type);
@@ -440,7 +442,8 @@ static int qos_block_commit(void *node, void *link_mem, void *self_struct,
 	/*Since the global value is in enabled state,
 	 *enable_qos == False need to be updated to QOS */
 	/* Add check for global_config */
-	if (g_qos_config->enable_qos) {
+	if (g_qos_config->enable_qos &&
+	    g_qos_config->qos_type != QOS_PER_CLIENT_ENABLED) {
 		gsh_export->qos_block = self_struct;
 		LogFullDebug(COMPONENT_CONFIG,
 			     "QOS qb:%p Enable:%d max_export_wbw:%ld",
@@ -455,85 +458,104 @@ static int qos_block_commit(void *node, void *link_mem, void *self_struct,
 			     gsh_export->export_id, gsh_export->cfg_fullpath,
 			     gsh_export->cfg_pseudopath);
 		/* Init QOS internal strutures here */
-		QoS_perShareInsert(gsh_export, qos_block);
+		QoS_perExportInsert(gsh_export, qos_block);
 	} else {
 		LogFullDebug(COMPONENT_CONFIG,
 			     "QOS qb:%p Disabled:%d eid:%d cfg_path:%s",
 			     qos_block, qos_block->enable_qos,
 			     gsh_export->export_id, gsh_export->cfg_fullpath);
+		if (qos_block) {
+			gsh_free(qos_block);
+			gsh_export->qos_block = NULL;
+		}
 	}
 	return 0;
 }
 
 static struct config_item qos_block_params[] = {
-	CONF_ITEM_BOOL("enable_qos", true, qos_block_config, enable_qos),
+	CONF_ITEM_BOOL("enable_qos", false, qos_block_config, enable_qos),
+
 	CONF_ITEM_BOOL("enable_token", false, qos_block_config, enable_tokens),
-	CONF_ITEM_BOOL("enable_bw_control", true, qos_block_config,
+	CONF_ITEM_BOOL("enable_bw_control", false, qos_block_config,
 		       enable_bw_control),
-	CONF_ITEM_BOOL("enable_iops_control", true, qos_block_config,
+	CONF_ITEM_BOOL("enable_iops_control", false, qos_block_config,
 		       enable_iops_control),
 
 	CONF_ITEM_BOOL("combined_rw_bw_control", false, qos_block_config,
 		       combined_rw_bw_control),
-	CONF_ITEM_BOOL("combined_rw_token_control", true, qos_block_config,
+	CONF_ITEM_BOOL("combined_rw_token_control", false, qos_block_config,
 		       combined_rw_token_control),
 	CONF_ITEM_BOOL("combined_rw_iops_control", true, qos_block_config,
 		       combined_rw_iops_control),
 
 	CONF_ITEM_UI64("qos_type", 1, 3, 3, qos_block_config, qos_type),
 
-	CONF_ITEM_UI64("max_export_combined_bw", 1048576, 2147483648,
-		       2147483648, qos_block_config, max_export_combined_bw),
-	CONF_ITEM_UI64("max_client_combined_bw", 1048576, 2147483648,
-		       2147483648, qos_block_config, max_client_combined_bw),
-	CONF_ITEM_UI64("max_export_write_bw", 1048576, 2147483648, 2147483648,
-		       qos_block_config, max_export_write_bw),
-	CONF_ITEM_UI64("max_export_read_bw", 1048576, 2147483648, 2147483648,
-		       qos_block_config, max_export_read_bw),
-	CONF_ITEM_UI64("max_client_write_bw", 1048576, 2147483648, 2147483648,
-		       qos_block_config, max_client_write_bw),
-	CONF_ITEM_UI64("max_client_read_bw", 1048576, 2147483648, 2147483648,
-		       qos_block_config, max_client_read_bw),
+	CONF_ITEM_UI64("max_export_combined_bw", QOS_MIN_BW, QOS_MAX_BW,
+		       QOS_DEFAULT_EXPORT_BW, qos_block_config,
+		       max_export_combined_bw),
+	CONF_ITEM_UI64("max_client_combined_bw", QOS_MIN_BW, QOS_MAX_BW,
+		       QOS_DEFAULT_CLIENT_BW, qos_block_config,
+		       max_client_combined_bw),
+	CONF_ITEM_UI64("max_export_write_bw", QOS_MIN_BW, QOS_MAX_BW,
+		       QOS_DEFAULT_EXPORT_BW, qos_block_config,
+		       max_export_write_bw),
+	CONF_ITEM_UI64("max_export_read_bw", QOS_MIN_BW, QOS_MAX_BW,
+		       QOS_DEFAULT_EXPORT_BW, qos_block_config,
+		       max_export_read_bw),
+	CONF_ITEM_UI64("max_client_write_bw", QOS_MIN_BW, QOS_MAX_BW,
+		       QOS_DEFAULT_CLIENT_BW, qos_block_config,
+		       max_client_write_bw),
+	CONF_ITEM_UI64("max_client_read_bw", QOS_MIN_BW, QOS_MAX_BW,
+		       QOS_DEFAULT_CLIENT_BW, qos_block_config,
+		       max_client_read_bw),
 
-	CONF_ITEM_UI64("max_export_iops", 10, 500000, 10, qos_block_config,
+	CONF_ITEM_UI64("max_export_iops", QOS_MIN_IOPS, QOS_MAX_IOPS,
+		       QOS_DEFAULT_EXPORT_IOPS, qos_block_config,
 		       max_export_combined_iops),
-	CONF_ITEM_UI64("max_client_iops", 1, 250000, 1, qos_block_config,
+	CONF_ITEM_UI64("max_client_iops", QOS_MIN_IOPS, QOS_MAX_IOPS,
+		       QOS_DEFAULT_CLIENT_IOPS, qos_block_config,
 		       max_client_combined_iops),
-	CONF_ITEM_UI64("max_export_write_iops", 10, 500000, 10,
-		       qos_block_config, max_export_write_iops),
-	CONF_ITEM_UI64("max_export_read_iops", 10, 500000, 10, qos_block_config,
+	CONF_ITEM_UI64("max_export_write_iops", QOS_MIN_IOPS, QOS_MAX_IOPS,
+		       QOS_DEFAULT_EXPORT_IOPS, qos_block_config,
+		       max_export_write_iops),
+	CONF_ITEM_UI64("max_export_read_iops", QOS_MIN_IOPS, QOS_MAX_IOPS,
+		       QOS_DEFAULT_EXPORT_IOPS, qos_block_config,
 		       max_export_read_iops),
-	CONF_ITEM_UI64("max_client_write_iops", 1, 250000, 1, qos_block_config,
+	CONF_ITEM_UI64("max_client_write_iops", QOS_MIN_IOPS, QOS_MAX_IOPS,
+		       QOS_DEFAULT_CLIENT_IOPS, qos_block_config,
 		       max_client_write_iops),
-	CONF_ITEM_UI64("max_client_read_iops", 1, 250000, 1, qos_block_config,
+	CONF_ITEM_UI64("max_client_read_iops", QOS_MIN_IOPS, QOS_MAX_IOPS,
+		       QOS_DEFAULT_CLIENT_IOPS, qos_block_config,
 		       max_client_read_iops),
 
-	CONF_ITEM_UI64("max_export_tokens", 1024, 2147483648, 214748364,
-		       qos_block_config, max_export_write_tokens),
-	CONF_ITEM_UI64("max_client_tokens", 1024, 2147483648, 214748364,
-		       qos_block_config, max_client_write_tokens),
-	/* Enable this block once pnfs with nconnect support is enabled
-	CONF_ITEM_UI64("export_tokens_renew_time",  0, 3600, 100,
-			qos_block_config, export_write_tokens_renew_time),
-	CONF_ITEM_UI64("client_tokens_renew_time",  0, 3600, 100,
-			qos_block_config, client_write_tokens_renew_time),
-	CONF_ITEM_UI64("max_export_read_tokens",  1024, 2147483648, 214748364,
-			qos_block_config, max_export_read_tokens),
-	CONF_ITEM_UI64("max_export_write_tokens", 1024, 2147483648, 214748364,
-			qos_block_config, max_export_write_tokens),
-	CONF_ITEM_UI64("max_client_read_tokens",  1024, 2147483648, 214748364,
-			qos_block_config, max_client_read_tokens),
-	CONF_ITEM_UI64("max_client_write_tokens", 1024, 2147483648, 214748364,
-			qos_block_config, max_client_write_tokens),
-	CONF_ITEM_UI64("export_read_tokens_renew_time",  0, 3600, 100,
-			qos_block_config, export_read_tokens_renew_time),
-	CONF_ITEM_UI64("export_write_tokens_renew_time", 0, 3600, 100,
-			qos_block_config, export_write_tokens_renew_time),
-	CONF_ITEM_UI64("client_read_tokens_renew_time",  0, 3600, 100,
-			qos_block_config, client_read_tokens_renew_time),
-	CONF_ITEM_UI64("client_write_tokens_renew_time", 0, 3600, 100,
-			qos_block_config, client_write_tokens_renew_time),
-	*/
+	CONF_ITEM_UI64("max_export_read_tokens", QOS_MIN_TOKENS, QOS_MAX_TOKENS,
+		       QOS_DEFAULT_TOKENS, qos_block_config,
+		       max_export_read_tokens),
+	CONF_ITEM_UI64("max_export_write_tokens", QOS_MIN_TOKENS,
+		       QOS_MAX_TOKENS, QOS_DEFAULT_TOKENS, qos_block_config,
+		       max_export_write_tokens),
+	CONF_ITEM_UI64("max_client_read_tokens", QOS_MIN_TOKENS, QOS_MAX_TOKENS,
+		       QOS_DEFAULT_TOKENS, qos_block_config,
+		       max_client_read_tokens),
+	CONF_ITEM_UI64("max_client_write_tokens", QOS_MIN_TOKENS,
+		       QOS_MAX_TOKENS, QOS_DEFAULT_TOKENS, qos_block_config,
+		       max_client_write_tokens),
+	CONF_ITEM_UI64("export_read_tokens_renew_time",
+		       QOS_MIN_TOKENS_REFRESH_TIME, QOS_MAX_REFRESH_TIME,
+		       QOS_DEF_TOKEN_REFRESH_TIME, qos_block_config,
+		       export_read_tokens_renew_time),
+	CONF_ITEM_UI64("export_write_tokens_renew_time",
+		       QOS_MIN_TOKENS_REFRESH_TIME, QOS_MAX_REFRESH_TIME,
+		       QOS_DEF_TOKEN_REFRESH_TIME, qos_block_config,
+		       export_write_tokens_renew_time),
+	CONF_ITEM_UI64("client_read_tokens_renew_time",
+		       QOS_MIN_TOKENS_REFRESH_TIME, QOS_MAX_REFRESH_TIME,
+		       QOS_DEF_TOKEN_REFRESH_TIME, qos_block_config,
+		       client_read_tokens_renew_time),
+	CONF_ITEM_UI64("client_write_tokens_renew_time",
+		       QOS_MIN_TOKENS_REFRESH_TIME, QOS_MAX_REFRESH_TIME,
+		       QOS_DEF_TOKEN_REFRESH_TIME, qos_block_config,
+		       client_write_tokens_renew_time),
 	CONFIG_EOL
 };
 
@@ -551,7 +573,7 @@ static struct config_block qos_block_desc = {
 	}
 };
 */
-
+#endif
 /**
  * @brief Init for CLIENT sub-block of an export.
  *
@@ -997,7 +1019,9 @@ static inline void copy_gsh_export(struct gsh_export *dest,
 		rcu_set_pointer(&(dest->fullpath), NULL);
 	}
 
+#ifdef ENABLE_QOS
 	copy_gsh_qos_mem(dest, src);
+#endif
 
 	/* Copy config pseudopath and create new refstr */
 	if (src->cfg_pseudopath != NULL) {
@@ -2100,8 +2124,10 @@ static struct config_item export_defaults_params[] = {
 			  EXPORT_DEFAULT_CACHE_EXPIRY, global_export_perms,
 			  conf.expire_time_attr, EXPORT_OPTION_EXPIRE_SET,
 			  conf.set),
+#ifdef ENABLE_QOS
 	CONF_ITEM_BLOCK("QOS_BLOCK", qos_block_params, qos_block_init,
 			qos_block_commit, gsh_export, qos_block),
+#endif
 	CONF_ITEM_BLOCK_MULT("Client", client_params, client_init,
 			     client_commit, global_export_perms, clients),
 	CONFIG_EOL
@@ -2182,9 +2208,10 @@ static struct config_item export_params[] = {
 			  EXPORT_DEFAULT_CACHE_EXPIRY, gsh_export,
 			  export_perms.expire_time_attr,
 			  EXPORT_OPTION_EXPIRE_SET, export_perms.set),
-
+#ifdef ENABLE_QOS
 	CONF_ITEM_BLOCK("QOS_BLOCK", qos_block_params, qos_block_init,
 			qos_block_commit, gsh_export, qos_block),
+#endif
 	/* NOTE: the Client and FSAL sub-blocks must be the *last*
 	 * two entries in the list.  This is so all other
 	 * parameters have been processed before these sub-blocks
@@ -2208,9 +2235,10 @@ static struct config_item export_update_params[] = {
 			  EXPORT_DEFAULT_CACHE_EXPIRY, gsh_export,
 			  export_perms.expire_time_attr,
 			  EXPORT_OPTION_EXPIRE_SET, export_perms.set),
-
+#ifdef ENABLE_QOS
 	CONF_ITEM_BLOCK("QOS_BLOCK", qos_block_params, qos_block_init,
 			qos_block_commit, gsh_export, qos_block),
+#endif
 
 	/* NOTE: the Client and FSAL sub-blocks must be the *last*
 	 * two entries in the list.  This is so all other
@@ -2809,8 +2837,10 @@ void free_export_resources(struct gsh_export *export, bool config)
 
 	export->fsal_export = NULL;
 
+#ifdef ENABLE_QOS
+	qos_free_mem(export, QOS_EXPORT);
+#endif
 	/* free strings here */
-	qos_free_mem(export, 0);
 	gsh_free(export->cfg_fullpath);
 	gsh_free(export->cfg_pseudopath);
 	gsh_free(export->FS_tag);

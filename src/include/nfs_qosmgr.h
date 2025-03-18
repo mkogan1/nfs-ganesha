@@ -22,10 +22,11 @@
  *
  * ---------------------------------------
  */
-
+#if ENABLE_QOS
 #include "gsh_dbus.h"
 void dbus_qosmgr_init(void);
 struct QoS_perClient_Class *get_client_qos(const sockaddr_t *client_ip);
-struct QoS_perShare_Class *get_share_qos(struct gsh_export *export);
-uint32_t get_share_client_count(struct QoS_perShare_Class *s_qos_class);
+struct QoS_perExport_Class *get_export_qos(struct gsh_export *export);
+uint32_t get_export_client_count(struct QoS_perExport_Class *s_qos_class);
 extern struct gsh_client *lookup_client(DBusMessageIter *args, char **errormsg);
+#endif

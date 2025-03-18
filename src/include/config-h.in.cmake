@@ -113,6 +113,7 @@
 #cmakedefine ENABLE_LOCKTRACE 1
 #cmakedefine SANITIZE_ADDRESS 1
 #cmakedefine DEBUG_MDCACHE 1
+#cmakedefine ENABLE_QOS 1
 #cmakedefine USE_RADOS_RECOV 1
 #cmakedefine RADOS_URLS 1
 #cmakedefine USE_LLAPI 1

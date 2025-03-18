@@ -266,7 +266,9 @@ out:
 	PTHREAD_RWLOCK_unlock(&client_by_ip.cip_lock);
 	if (removed == 0) {
 		server_st = container_of(cl, struct server_stats, client);
-		qos_free_mem(cl, 1);
+#ifdef ENABLE_QOS
+		qos_free_mem(cl, QOS_CLIENT);
+#endif
 		server_stats_free(&server_st->st);
 		server_stats_allops_free(&server_st->c_all);
 		connection_manager__client_fini(&cl->connection_manager);

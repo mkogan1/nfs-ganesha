@@ -104,7 +104,9 @@ enum nfs_req_result nfs4_op_destroy_session(struct nfs_argop4 *op,
 
 	/* Release ref taken in get_pointer */
 	dec_session_ref(session);
+#ifdef ENABLE_QOS
 	qos_free_mem(op_ctx->client, QOS_CLIENT);
+#endif
 	GSH_AUTO_TRACEPOINT(nfs4, op_destroy_session_end, TRACE_INFO,
 			    "DESTROY_SESSION res: status={}",
 			    res_DESTROY_SESSION4->dsr_status);

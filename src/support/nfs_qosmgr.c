@@ -1,8 +1,8 @@
-/* SPDX-License-Identifier: LGPL-3.0-or-later */
+// SPDX-License-Identifier: LGPL-3.0-or-later
 /*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
- * Copyright (C) 2025, IBM . All rights reserved.
+ * Copyright (C) 2025, IBM. All rights reserved.
  * Author: Deeraj Patil <deeraj.patil@ibm.com>
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +33,6 @@
 #include "nfs_core.h"
 #include "nfs_qos.h"
 #include "nfs_qosmgr.h"
-
 /*  QoS Method Arguments */
 #define CLIENT_IP_ARG { "client_ip", "s", "in" }
 #define READ_BW_IN_ARG { "read_bw", "t", "in" }
@@ -41,7 +40,7 @@
 #define READ_BW_OUT_ARG { "read_bw", "t", "out" }
 #define WRITE_BW_OUT_ARG { "write_bw", "t", "out" }
 #define SUCCESS_ARG { "success", "b", "out" }
-#define SHARE_ID_ARG { "id", "q", "in" }
+#define EXPORT_ID_ARG { "id", "q", "in" }
 #define MAX_TOKENS_IN { "max_tokens", "u", "in" }
 #define MAX_TOKENS_OUT { "max_tokens", "u", "out" }
 #define TOKEN_RENEW_IN { "token_renewal", "t", "in" }
@@ -82,6 +81,17 @@ struct showclients_state {
 		}                                                 \
 	} while (0)
 
+/**
+ * @brief Set bandwidth settings for a client.
+ *
+ * This function sets the bandwidth limits for a specified client.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
 static bool dbus_qos_client_bw_set(DBusMessageIter *args, DBusMessage *reply,
 				   DBusError *error)
 {
@@ -115,7 +125,17 @@ static bool dbus_qos_client_bw_set(DBusMessageIter *args, DBusMessage *reply,
 	return false;
 }
 
-/*  Token Control Methods */
+/**
+ * @brief Set token settings for a client.
+ *
+ * This function sets the token limits for a specified client.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
 static bool dbus_qos_client_token_set(DBusMessageIter *args, DBusMessage *reply,
 				      DBusError *error)
 {
@@ -152,6 +172,17 @@ static bool dbus_qos_client_token_set(DBusMessageIter *args, DBusMessage *reply,
 	return false;
 }
 
+/**
+ * @brief Get token settings for a client.
+ *
+ * This function retrieves the current token limits for a given client.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
 static bool dbus_qos_client_token_get(DBusMessageIter *args, DBusMessage *reply,
 				      DBusError *error)
 {
@@ -184,6 +215,18 @@ static bool dbus_qos_client_token_get(DBusMessageIter *args, DBusMessage *reply,
 	}
 	return false;
 }
+
+/**
+ * @brief Get bandwidth settings for a client.
+ *
+ * This function retrieves the current bandwidth settings for a given client.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
 static bool dbus_qos_client_bw_get(DBusMessageIter *args, DBusMessage *reply,
 				   DBusError *error)
 {
@@ -215,6 +258,17 @@ static bool dbus_qos_client_bw_get(DBusMessageIter *args, DBusMessage *reply,
 	return false;
 }
 
+/**
+ * @brief Convert a QoS client to D-Bus format.
+ *
+ * This function converts the details of a QoS client into a
+ * D-Bus structure for sending user the client details.
+ *
+ * @param [in] client qos_client_t pointer pointing to the client
+ * @param [in] state void pointer containing the D-Bus message iterator state
+ *
+ * @return true if successful, false otherwise
+ */
 static bool client_qos_to_dbus(qos_client_t *client, void *state)
 {
 	struct showclients_state *iter_state = state;
@@ -286,12 +340,23 @@ static bool client_qos_to_dbus(qos_client_t *client, void *state)
 	return true;
 }
 
-static bool dbus_qos_pspc_clients_bw_list(DBusMessageIter *args,
+/**
+ * @brief Get bandwidth settings for clients in a pepc configuration.
+ * This function retrieves the current bandwidth limits for clients
+ * under a pepc configuration.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_pepc_clients_bw_list(DBusMessageIter *args,
 					  DBusMessage *reply, DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter;
 	struct showclients_state iter_state;
 	uint32_t total_clients = 0;
@@ -300,20 +365,20 @@ static bool dbus_qos_pspc_clients_bw_list(DBusMessageIter *args,
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
-	if (!share) {
-		put_gsh_export(export);
+	export = get_export_qos(gsh_export);
+	if (!export) {
+		put_gsh_export(gsh_export);
 		return false;
 	}
 
 	dbus_message_iter_init_append(reply, &iter);
 
-	PTHREAD_MUTEX_lock(&share->lock);
-	total_clients = get_share_client_count(share);
-	PTHREAD_MUTEX_unlock(&share->lock);
+	PTHREAD_MUTEX_lock(&export->lock);
+	total_clients = get_export_client_count(export);
+	PTHREAD_MUTEX_unlock(&export->lock);
 
 	dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &total_clients);
 
@@ -321,7 +386,7 @@ static bool dbus_qos_pspc_clients_bw_list(DBusMessageIter *args,
 					 QOS_CLIENT_CONTAINER,
 					 &iter_state.client_iter);
 
-	qos_client_t *client = share->clients;
+	qos_client_t *client = export->clients;
 
 	while (client) {
 		client_qos_to_dbus(client, &iter_state);
@@ -329,15 +394,27 @@ static bool dbus_qos_pspc_clients_bw_list(DBusMessageIter *args,
 	}
 
 	dbus_message_iter_close_container(&iter, &iter_state.client_iter);
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 	return true;
 }
-static bool dbus_qos_share_bw_get(DBusMessageIter *args, DBusMessage *reply,
-				  DBusError *error)
+
+/**
+ * @brief Get bandwidth settings for a export.
+ *
+ * This function retrieves the current bandwidth limits for a given export.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_export_bw_get(DBusMessageIter *args, DBusMessage *reply,
+				   DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter, bw_struct;
 	char read_bw_str[32], write_bw_str[32], enable_bw_str[32];
 	const char *read_bw_ptr, *write_bw_ptr, *enable_bw_ptr;
@@ -349,24 +426,24 @@ static bool dbus_qos_share_bw_get(DBusMessageIter *args, DBusMessage *reply,
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
-	if (share) {
-		PTHREAD_MUTEX_lock(&share->lock);
+	export = get_export_qos(gsh_export);
+	if (export) {
+		PTHREAD_MUTEX_lock(&export->lock);
 
 		dbus_message_iter_open_container(&iter, DBUS_TYPE_STRUCT, NULL,
 						 &bw_struct);
 
 		snprintf(enable_bw_str, sizeof(enable_bw_str), "%d",
-			 share->bw_enabled);
+			 export->bw_enabled);
 		enable_bw_ptr = enable_bw_str;
 		snprintf(read_bw_str, sizeof(read_bw_str), "%lu",
-			 share->read_bucket.max_bw_allowed);
+			 export->read_bucket.max_bw_allowed);
 		read_bw_ptr = read_bw_str;
 		snprintf(write_bw_str, sizeof(write_bw_str), "%lu",
-			 share->write_bucket.max_bw_allowed);
+			 export->write_bucket.max_bw_allowed);
 		write_bw_ptr = write_bw_str;
 
 		dbus_message_iter_append_basic(&bw_struct, DBUS_TYPE_STRING,
@@ -383,19 +460,30 @@ static bool dbus_qos_share_bw_get(DBusMessageIter *args, DBusMessage *reply,
 					       &write_bw_ptr);
 
 		dbus_message_iter_close_container(&iter, &bw_struct);
-		PTHREAD_MUTEX_unlock(&share->lock);
+		PTHREAD_MUTEX_unlock(&export->lock);
 	}
 
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 	return true;
 }
 
-static bool dbus_qos_share_token_get(DBusMessageIter *args, DBusMessage *reply,
-				     DBusError *error)
+/**
+ * @brief Get token settings for a export.
+ *
+ * This function retrieves the current token limits for a given export.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_export_token_get(DBusMessageIter *args, DBusMessage *reply,
+				      DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter, token_struct;
 	char read_token_str[32], write_token_str[32];
 	const char *read_token_ptr, *write_token_ptr;
@@ -403,22 +491,22 @@ static bool dbus_qos_share_token_get(DBusMessageIter *args, DBusMessage *reply,
 	const char *write_label = "WRITE_TOKENS";
 
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
-	if (share) {
-		PTHREAD_MUTEX_lock(&share->lock);
+	export = get_export_qos(gsh_export);
+	if (export) {
+		PTHREAD_MUTEX_lock(&export->lock);
 
 		dbus_message_iter_init_append(reply, &iter);
 		dbus_message_iter_open_container(&iter, DBUS_TYPE_STRUCT, NULL,
 						 &token_struct);
 
 		snprintf(read_token_str, sizeof(read_token_str), "%lu",
-			 share->read_bucket.max_available_tokens);
+			 export->read_bucket.max_available_tokens);
 		read_token_ptr = read_token_str;
 		snprintf(write_token_str, sizeof(write_token_str), "%lu",
-			 share->write_bucket.max_available_tokens);
+			 export->write_bucket.max_available_tokens);
 		write_token_ptr = write_token_str;
 
 		dbus_message_iter_append_basic(&token_struct, DBUS_TYPE_STRING,
@@ -431,20 +519,31 @@ static bool dbus_qos_share_token_get(DBusMessageIter *args, DBusMessage *reply,
 					       &write_token_ptr);
 
 		dbus_message_iter_close_container(&iter, &token_struct);
-		PTHREAD_MUTEX_unlock(&share->lock);
+		PTHREAD_MUTEX_unlock(&export->lock);
 	}
 
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 	return true;
 }
 
-static bool dbus_qos_share_default_client_bw_get(DBusMessageIter *args,
-						 DBusMessage *reply,
-						 DBusError *error)
+/**
+ * @brief Get default client bandwidth settings for a export.
+ * This function retrieves the current default client bandwidth limits
+ * under a given export.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_export_default_client_bw_get(DBusMessageIter *args,
+						  DBusMessage *reply,
+						  DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter, bw_struct;
 	char read_bw_str[32], write_bw_str[32];
 	const char *read_bw_ptr, *write_bw_ptr;
@@ -452,23 +551,23 @@ static bool dbus_qos_share_default_client_bw_get(DBusMessageIter *args,
 	const char *write_label = "MAX_CLIENT_WRITE_BW";
 
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	if (!export)
+	gsh_export = get_gsh_export(export_id);
+	if (!gsh_export)
 		return false;
 
-	share = get_share_qos(export);
-	if (share) {
-		PTHREAD_MUTEX_lock(&share->lock);
+	export = get_export_qos(gsh_export);
+	if (export) {
+		PTHREAD_MUTEX_lock(&export->lock);
 
 		dbus_message_iter_init_append(reply, &iter);
 		dbus_message_iter_open_container(&iter, DBUS_TYPE_STRUCT, NULL,
 						 &bw_struct);
 
 		snprintf(read_bw_str, sizeof(read_bw_str), "%lu",
-			 export->qos_block->max_client_read_bw);
+			 gsh_export->qos_block->max_client_read_bw);
 		read_bw_ptr = read_bw_str;
 		snprintf(write_bw_str, sizeof(write_bw_str), "%lu",
-			 export->qos_block->max_client_write_bw);
+			 gsh_export->qos_block->max_client_write_bw);
 		write_bw_ptr = write_bw_str;
 
 		dbus_message_iter_append_basic(&bw_struct, DBUS_TYPE_STRING,
@@ -481,27 +580,39 @@ static bool dbus_qos_share_default_client_bw_get(DBusMessageIter *args,
 					       &write_bw_ptr);
 
 		dbus_message_iter_close_container(&iter, &bw_struct);
-		PTHREAD_MUTEX_unlock(&share->lock);
+		PTHREAD_MUTEX_unlock(&export->lock);
 	}
 
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 	return true;
 }
-static bool dbus_qos_share_bw_set(DBusMessageIter *args, DBusMessage *reply,
-				  DBusError *error)
+
+/**
+ * @brief Set bandwidth settings for a export.
+ *
+ * This function sets the bandwidth limits for a specified export.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_export_bw_set(DBusMessageIter *args, DBusMessage *reply,
+				   DBusError *error)
 {
 	uint16_t export_id;
 	uint64_t read_bw, write_bw;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter;
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
 	CHECK_DBUS_NEXT_ARG_OR_RETURN(args, DBUS_TYPE_UINT64, iter,
 				      "Invalid arg read_bw");
@@ -510,33 +621,44 @@ static bool dbus_qos_share_bw_set(DBusMessageIter *args, DBusMessage *reply,
 				      "Invalid arg write_bw");
 	dbus_message_iter_get_basic(args, &write_bw);
 
-	share = get_share_qos(export);
-	if (share) {
-		PTHREAD_MUTEX_lock(&share->lock);
-		share->read_bucket.max_bw_allowed = read_bw;
-		share->write_bucket.max_bw_allowed = write_bw;
-		PTHREAD_MUTEX_unlock(&share->lock);
+	export = get_export_qos(gsh_export);
+	if (export) {
+		PTHREAD_MUTEX_lock(&export->lock);
+		export->read_bucket.max_bw_allowed = read_bw;
+		export->write_bucket.max_bw_allowed = write_bw;
+		PTHREAD_MUTEX_unlock(&export->lock);
 	}
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 	return true;
 }
 
-static bool dbus_qos_share_token_set(DBusMessageIter *args, DBusMessage *reply,
-				     DBusError *error)
+/**
+ * @brief Set token settings for a export.
+ *
+ * This function sets the token limits for a specified export.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_export_token_set(DBusMessageIter *args, DBusMessage *reply,
+				      DBusError *error)
 {
 	uint16_t export_id;
 	uint64_t max_tokens;
 	uint64_t token_renewal;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter;
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
 	CHECK_DBUS_NEXT_ARG_OR_RETURN(args, DBUS_TYPE_UINT64, iter,
 				      "Invalid arg max_token");
@@ -545,25 +667,34 @@ static bool dbus_qos_share_token_set(DBusMessageIter *args, DBusMessage *reply,
 				      "Invalid arg token_renewal");
 	dbus_message_iter_get_basic(args, &token_renewal);
 
-	share = get_share_qos(export);
-	if (share) {
-		PTHREAD_MUTEX_lock(&share->lock);
-		share->read_bucket.max_available_tokens = max_tokens;
-		share->write_bucket.max_available_tokens = max_tokens;
-		share->read_bucket.tokens_renew_time = token_renewal;
-		share->write_bucket.tokens_renew_time = token_renewal;
-		PTHREAD_MUTEX_unlock(&share->lock);
+	export = get_export_qos(gsh_export);
+	if (export) {
+		PTHREAD_MUTEX_lock(&export->lock);
+		export->read_bucket.max_available_tokens = max_tokens;
+		export->write_bucket.max_available_tokens = max_tokens;
+		export->read_bucket.tokens_renew_time = token_renewal;
+		export->write_bucket.tokens_renew_time = token_renewal;
+		PTHREAD_MUTEX_unlock(&export->lock);
 	}
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 	return true;
 }
 
-static bool dbus_qos_pspc_clients_bw_set(DBusMessageIter *args,
+/**
+ * @brief Set bandwidth settings for a client in a pepc configuration.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_pepc_clients_bw_set(DBusMessageIter *args,
 					 DBusMessage *reply, DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	qos_client_t *client;
 	struct gsh_client *client_ip;
 	uint64_t read_bw, write_bw;
@@ -574,12 +705,12 @@ static bool dbus_qos_pspc_clients_bw_set(DBusMessageIter *args,
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
-	if (!share) {
-		put_gsh_export(export);
+	export = get_export_qos(gsh_export);
+	if (!export) {
+		put_gsh_export(gsh_export);
 		return false;
 	}
 	dbus_message_iter_next(args);
@@ -595,7 +726,7 @@ static bool dbus_qos_pspc_clients_bw_set(DBusMessageIter *args,
 				      "Invalid arg write_bw");
 	dbus_message_iter_get_basic(args, &write_bw);
 
-	client = pspc_get_client_from_list(share->clients,
+	client = pepc_get_client_from_list(export->clients,
 					   &client_ip->cl_addrbuf);
 	if (client) {
 		PTHREAD_MUTEX_lock(&client->lock);
@@ -606,17 +737,28 @@ static bool dbus_qos_pspc_clients_bw_set(DBusMessageIter *args,
 		return true;
 	}
 
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 	return true;
 }
 
-static bool dbus_qos_share_default_client_bw_set(DBusMessageIter *args,
-						 DBusMessage *reply,
-						 DBusError *error)
+/**
+ * @brief Set default client bandwidth settings for a export.
+ *
+ * function sets the default client bandwidth limits for a specified export.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_export_default_client_bw_set(DBusMessageIter *args,
+						  DBusMessage *reply,
+						  DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	uint64_t read_bw, write_bw;
 	DBusMessageIter iter;
 
@@ -624,12 +766,12 @@ static bool dbus_qos_share_default_client_bw_set(DBusMessageIter *args,
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
-	if (!share) {
-		put_gsh_export(export);
+	export = get_export_qos(gsh_export);
+	if (!export) {
+		put_gsh_export(gsh_export);
 		return false;
 	}
 
@@ -640,39 +782,50 @@ static bool dbus_qos_share_default_client_bw_set(DBusMessageIter *args,
 				      "Invalid arg write_bw");
 	dbus_message_iter_get_basic(args, &write_bw);
 
-	export->qos_block->max_client_read_bw = read_bw;
-	export->qos_block->max_client_write_bw = write_bw;
-	put_gsh_export(export);
+	gsh_export->qos_block->max_client_read_bw = read_bw;
+	gsh_export->qos_block->max_client_write_bw = write_bw;
+	put_gsh_export(gsh_export);
 
 	return true;
 }
 
+/**
+ * @brief Enable bandwidth control for a export.
+ *
+ * This function enables bandwidth control for a specified export.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
 static bool dbus_qos_enable_bw_control_ps(DBusMessageIter *args,
 					  DBusMessage *reply, DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter;
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
+	export = get_export_qos(gsh_export);
 	if (g_qos_config->enable_qos && g_qos_config->enable_bw_control &&
-	    share) {
-		QoS_perShareInsert(export, NULL);
+	    export) {
+		QoS_perExportInsert(gsh_export, NULL);
 	} else {
-		put_gsh_export(export);
+		put_gsh_export(gsh_export);
 		gsh_dbus_status_reply(&iter, false, "check global values");
 		return true;
 	}
 
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 
 	return true;
 }
@@ -681,216 +834,234 @@ static bool dbus_qos_disable_bw_control_ps(DBusMessageIter *args,
 					   DBusMessage *reply, DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter;
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
-	if (share) {
-		pthread_mutex_lock(&share->lock);
-		qos_drain_bw_ios(share, QOS_SHARE);
-		pthread_mutex_unlock(&share->lock);
+	export = get_export_qos(gsh_export);
+	if (export) {
+		PTHREAD_MUTEX_lock(&export->lock);
+		qos_drain_bw_ios(export, QOS_EXPORT);
+		PTHREAD_MUTEX_unlock(&export->lock);
 	} else {
-		put_gsh_export(export);
+		put_gsh_export(gsh_export);
 		gsh_dbus_status_reply(&iter, false, "check global values");
 		return true;
 	}
 
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 
 	return true;
 }
 
-static bool dbus_qos_disable_bw_control_pspc(DBusMessageIter *args,
+/**
+ * @brief Disable bandwidth control for a export under a pepc configuration.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_disable_bw_control_pepc(DBusMessageIter *args,
 					     DBusMessage *reply,
 					     DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter;
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
-	if (share) {
-		pthread_mutex_lock(&share->lock);
-		qos_client_t *client = share->clients;
+	export = get_export_qos(gsh_export);
+	if (export) {
+		PTHREAD_MUTEX_lock(&export->lock);
+		qos_client_t *client = export->clients;
 
 		while (client != NULL) {
 			qos_drain_bw_ios(client, QOS_CLIENT);
 			client = client->next;
 		}
-		qos_drain_bw_ios(share, QOS_SHARE);
-		pthread_mutex_unlock(&share->lock);
+		qos_drain_bw_ios(export, QOS_EXPORT);
+		PTHREAD_MUTEX_unlock(&export->lock);
 	} else {
-		put_gsh_export(export);
+		put_gsh_export(gsh_export);
 		gsh_dbus_status_reply(&iter, false, "check global values");
 		return true;
 	}
 
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 
 	return true;
 }
 
-static bool dbus_qos_enable_bw_control_pspc(DBusMessageIter *args,
+/**
+ * @brief Enable bandwidth control for a export under a pepc configuration.
+ *
+ * @param [in] args DBusMessageIter containing the input arguments
+ * @param [in] reply DBusMessage to store the output result
+ * @param [in] error DBusError object to handle any errors that occur
+ *
+ * @return true if successful, false otherwise
+ */
+static bool dbus_qos_enable_bw_control_pepc(DBusMessageIter *args,
 					    DBusMessage *reply,
 					    DBusError *error)
 {
 	uint16_t export_id;
-	struct gsh_export *export;
-	qos_share_t *share;
+	struct gsh_export *gsh_export;
+	qos_export_t *export;
 	DBusMessageIter iter;
 
 	dbus_message_iter_init_append(reply, &iter);
 	CHECK_DBUS_ARG_OR_RETURN(args, DBUS_TYPE_UINT16, iter,
 				 "Invalid arg exportid");
 	dbus_message_iter_get_basic(args, &export_id);
-	export = get_gsh_export(export_id);
-	CHECK_ARG_AND_RETURN(export, iter, "Export id not found");
+	gsh_export = get_gsh_export(export_id);
+	CHECK_ARG_AND_RETURN(gsh_export, iter, "Export id not found");
 
-	share = get_share_qos(export);
-	if (share) {
-		pthread_mutex_lock(&share->lock);
-		qos_client_t *client = share->clients;
+	export = get_export_qos(gsh_export);
+	if (export) {
+		PTHREAD_MUTEX_lock(&export->lock);
+		qos_client_t *client = export->clients;
 
 		while (client != NULL) {
 			client->bw_enabled = 1;
 			client = client->next;
 		}
-		share->bw_enabled = 1;
-		pthread_mutex_unlock(&share->lock);
+		export->bw_enabled = 1;
+		PTHREAD_MUTEX_unlock(&export->lock);
 	} else {
-		put_gsh_export(export);
+		put_gsh_export(gsh_export);
 		gsh_dbus_status_reply(&iter, false, "check global values");
 		return true;
 	}
 
-	put_gsh_export(export);
+	put_gsh_export(gsh_export);
 
 	return true;
 }
-/* PerShare-PerClient implemnentation */
+/* Perexport-PerClient implemnentation */
 
-static struct gsh_dbus_method qos_share_clients_list = {
-	.name = "ListShareClientsBandwidth",
-	.method = dbus_qos_pspc_clients_bw_list,
-	.args = { SHARE_ID_ARG, TOTAL_CLIENTS, QOS_CLIENTS_REPLY, SUCCESS_ARG,
+static struct gsh_dbus_method qos_export_clients_list = {
+	.name = "ListExportClientsBandwidth",
+	.method = dbus_qos_pepc_clients_bw_list,
+	.args = { EXPORT_ID_ARG, TOTAL_CLIENTS, QOS_CLIENTS_REPLY, SUCCESS_ARG,
 		  END_ARG_LIST }
 };
 
-static struct gsh_dbus_method qos_pspc_clients_bw_set = {
-	.name = "SetShareClientBandwidth",
-	.method = dbus_qos_pspc_clients_bw_set,
-	.args = { SHARE_ID_ARG, IPADDR_ARG, READ_BW_IN_ARG, WRITE_BW_IN_ARG,
+static struct gsh_dbus_method qos_pepc_clients_bw_set = {
+	.name = "SetExportClientBandwidth",
+	.method = dbus_qos_pepc_clients_bw_set,
+	.args = { EXPORT_ID_ARG, IPADDR_ARG, READ_BW_IN_ARG, WRITE_BW_IN_ARG,
 		  SUCCESS_ARG, END_ARG_LIST }
 };
 
-static struct gsh_dbus_method qos_share_default_client_bw_get = {
-	.name = "GetShareDefaultClientBandwidth",
-	.method = dbus_qos_share_default_client_bw_get,
-	.args = { SHARE_ID_ARG,
+static struct gsh_dbus_method qos_export_default_client_bw_get = {
+	.name = "GetExportDefaultClientBandwidth",
+	.method = dbus_qos_export_default_client_bw_get,
+	.args = { EXPORT_ID_ARG,
 		  { "default_client_bandwidth", "a(ss)", "out" },
 		  SUCCESS_ARG,
 		  END_ARG_LIST }
 };
 
-static struct gsh_dbus_method qos_share_default_client_bw_set = {
-	.name = "SetShareDefaultClientBandwidth",
-	.method = dbus_qos_share_default_client_bw_set,
-	.args = { SHARE_ID_ARG, READ_BW_IN_ARG, WRITE_BW_IN_ARG, SUCCESS_ARG,
+static struct gsh_dbus_method qos_export_default_client_bw_set = {
+	.name = "SetExportDefaultClientBandwidth",
+	.method = dbus_qos_export_default_client_bw_set,
+	.args = { EXPORT_ID_ARG, READ_BW_IN_ARG, WRITE_BW_IN_ARG, SUCCESS_ARG,
 		  END_ARG_LIST }
 };
 
-static struct gsh_dbus_method qos_share_enable_all_clients_bw_control_pspc = {
-	.name = "EnableAllClientQosBwControlPSPC",
-	.method = dbus_qos_enable_bw_control_pspc,
-	.args = { SHARE_ID_ARG, SUCCESS_ARG, END_ARG_LIST }
+static struct gsh_dbus_method qos_export_enable_all_clients_bw_control_pepc = {
+	.name = "EnableAllClientQosBwControlpepc",
+	.method = dbus_qos_enable_bw_control_pepc,
+	.args = { EXPORT_ID_ARG, SUCCESS_ARG, END_ARG_LIST }
 };
 
-static struct gsh_dbus_method qos_share_disable_all_clients_bw_control_pspc = {
-	.name = "DisableShareQosBwControlPSPC",
-	.method = dbus_qos_disable_bw_control_pspc,
-	.args = { SHARE_ID_ARG, SUCCESS_ARG, END_ARG_LIST }
+static struct gsh_dbus_method qos_export_disable_all_clients_bw_control_pepc = {
+	.name = "DisableExportQosBwControlpepc",
+	.method = dbus_qos_disable_bw_control_pepc,
+	.args = { EXPORT_ID_ARG, SUCCESS_ARG, END_ARG_LIST }
 };
 
-/* Per Share ibut is common for PerShare-PerClient also*/
-static struct gsh_dbus_method qos_share_bw_get = {
-	.name = "GetShareBandwidth",
-	.method = dbus_qos_share_bw_get,
-	.args = { SHARE_ID_ARG,
+/* Per export ibut is common for Perexport-PerClient also*/
+static struct gsh_dbus_method qos_export_bw_get = {
+	.name = "GetExportBandwidth",
+	.method = dbus_qos_export_bw_get,
+	.args = { EXPORT_ID_ARG,
 		  { "bandwidth", "a(sss)", "out" },
 		  SUCCESS_ARG,
 		  END_ARG_LIST }
 };
-static struct gsh_dbus_method qos_share_bw_set = {
-	.name = "SetShareBandwidth",
-	.method = dbus_qos_share_bw_set,
-	.args = { SHARE_ID_ARG, READ_BW_IN_ARG, WRITE_BW_IN_ARG, SUCCESS_ARG,
+static struct gsh_dbus_method qos_export_bw_set = {
+	.name = "SetExportBandwidth",
+	.method = dbus_qos_export_bw_set,
+	.args = { EXPORT_ID_ARG, READ_BW_IN_ARG, WRITE_BW_IN_ARG, SUCCESS_ARG,
 		  END_ARG_LIST }
 };
 
-static struct gsh_dbus_method qos_share_token_get = {
-	.name = "GetShareTokens",
-	.method = dbus_qos_share_token_get,
-	.args = { SHARE_ID_ARG,
+static struct gsh_dbus_method qos_export_token_get = {
+	.name = "GetExportTokens",
+	.method = dbus_qos_export_token_get,
+	.args = { EXPORT_ID_ARG,
 		  { "tokens", "a(ss)", "out" },
 		  SUCCESS_ARG,
 		  END_ARG_LIST }
 };
 
-static struct gsh_dbus_method qos_share_token_set = {
-	.name = "SetShareTokens",
-	.method = dbus_qos_share_token_set,
-	.args = { SHARE_ID_ARG, MAX_TOKENS_IN, TOKEN_RENEW_IN, SUCCESS_ARG,
+static struct gsh_dbus_method qos_export_token_set = {
+	.name = "SetExportTokens",
+	.method = dbus_qos_export_token_set,
+	.args = { EXPORT_ID_ARG, MAX_TOKENS_IN, TOKEN_RENEW_IN, SUCCESS_ARG,
 		  END_ARG_LIST }
 };
 
-static struct gsh_dbus_method *qos_methods_pspc[] = {
-	&qos_share_bw_get,
-	&qos_share_bw_set,
-	&qos_share_token_get,
-	&qos_share_token_set,
-	&qos_share_clients_list,
-	&qos_pspc_clients_bw_set,
-	&qos_share_default_client_bw_get,
-	&qos_share_default_client_bw_set,
-	&qos_share_enable_all_clients_bw_control_pspc,
-	&qos_share_disable_all_clients_bw_control_pspc,
+static struct gsh_dbus_method *qos_methods_pepc[] = {
+	&qos_export_bw_get,
+	&qos_export_bw_set,
+	&qos_export_token_get,
+	&qos_export_token_set,
+	&qos_export_clients_list,
+	&qos_pepc_clients_bw_set,
+	&qos_export_default_client_bw_get,
+	&qos_export_default_client_bw_set,
+	&qos_export_enable_all_clients_bw_control_pepc,
+	&qos_export_disable_all_clients_bw_control_pepc,
 	NULL
 };
 
-static struct gsh_dbus_method qos_share_enable_bw_control = {
-	.name = "EnableShareQosBwControl",
+static struct gsh_dbus_method qos_export_enable_bw_control = {
+	.name = "EnableExportQosBwControl",
 	.method = dbus_qos_enable_bw_control_ps,
-	.args = { SHARE_ID_ARG, SUCCESS_ARG, END_ARG_LIST }
+	.args = { EXPORT_ID_ARG, SUCCESS_ARG, END_ARG_LIST }
 };
 
-static struct gsh_dbus_method qos_share_disable_bw_control = {
-	.name = "DisableShareQosBwControl",
+static struct gsh_dbus_method qos_export_disable_bw_control = {
+	.name = "DisableExportQosBwControl",
 	.method = dbus_qos_disable_bw_control_ps,
-	.args = { SHARE_ID_ARG, SUCCESS_ARG, END_ARG_LIST }
+	.args = { EXPORT_ID_ARG, SUCCESS_ARG, END_ARG_LIST }
 };
 static struct gsh_dbus_method *qos_methods_ps[] = {
-	&qos_share_bw_get,
-	&qos_share_bw_set,
-	&qos_share_token_get,
-	&qos_share_token_set,
-	&qos_share_enable_bw_control,
-	&qos_share_disable_bw_control,
+	&qos_export_bw_get,
+	&qos_export_bw_set,
+	&qos_export_token_get,
+	&qos_export_token_set,
+	&qos_export_enable_bw_control,
+	&qos_export_disable_bw_control,
 	NULL
 };
 
@@ -938,19 +1109,22 @@ static struct gsh_dbus_interface qos_interface = {
 static struct gsh_dbus_interface *dbus_qos_interface[] = { &qos_interface,
 							   NULL };
 
-/*  Initialize QoS manager */
+/**
+ * @brief Initialize QoS manager based on global QOS config type.
+ *
+ */
 void dbus_qosmgr_init(void)
 {
 	if (g_qos_config->enable_qos) {
 		switch (g_qos_config->qos_type) {
-		case QOS_PS_ENABLED:
+		case QOS_PER_EXPORT_ENABLED:
 			qos_interface.methods = qos_methods_ps;
 			break;
-		case QOS_PC_ENABLED:
+		case QOS_PER_CLIENT_ENABLED:
 			qos_interface.methods = qos_methods_pc;
 			break;
-		case QOS_PS_PC_ENABLED:
-			qos_interface.methods = qos_methods_pspc;
+		case QOS_PEREXPORT_PERCLIENT_ENABLED:
+			qos_interface.methods = qos_methods_pepc;
 			break;
 		}
 		gsh_dbus_register_path("QosMgr", dbus_qos_interface);

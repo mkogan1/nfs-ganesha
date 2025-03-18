@@ -68,8 +68,10 @@ struct nfs4_read_data {
 	struct fsal_obj_handle *obj;
 	/** Flags to control synchronization */
 	uint32_t flags;
+#ifdef ENABLE_QOS
 	/* QOS flag used while resuming the op */
 	uint32_t qos_flag;
+#endif
 	/** IO Info for READ_PLUS */
 	struct io_info info;
 	/** Arguments for read call - must be last */
@@ -268,11 +270,20 @@ static void nfs4_read_cb(struct fsal_obj_handle *obj, fsal_status_t ret,
 	}
 }
 
+#ifdef ENABLE_QOS
+/**
+ * @brief Callback function for QOS BW control, NFS4 read operations.
+ *
+ * This function is called on resuming the IO after ratelimiting considerations.
+ * It handles both rate-limited and token-based I/O,
+ *  resuming the service request if necessary.
+ *
+ * @param args Pointer to qos_op_cb_arg structure containing callback arguments
+ */
 void nfs4_qos_read_cb(void *args)
 {
 	struct qos_op_cb_arg *qos_cb_args = args;
 	struct nfs4_read_data *read_data = qos_cb_args->caller_data;
-	uint32_t flags;
 
 	if (qos_cb_args->ratecontrol) {
 		/* BW io, needs to be resumed, should take default path */
@@ -286,21 +297,14 @@ void nfs4_qos_read_cb(void *args)
 			     read_data);
 		/* Reset the flas indicating IO should not continue */
 		read_data->qos_flag = 0;
-
 		read_data->res_READ4->status = NFS4ERR_DELAY;
-		flags = atomic_postset_uint32_t_bits(&read_data->flags,
-						     ASYNC_PROC_DONE);
-		/* Once testing is done no need of below block,
-		 * directly call svc_resume */
-		if ((flags & ASYNC_PROC_EXIT) == ASYNC_PROC_EXIT) {
-			svc_resume(read_data->data->req);
-		} else {
-			LogFullDebug(COMPONENT_QOS,
-				     "Shoudn't enter this block");
-		}
+		atomic_postset_uint32_t_bits(&read_data->flags,
+					     ASYNC_PROC_DONE);
+		svc_resume(read_data->data->req);
 	}
 	gsh_free(args);
 }
+#endif
 
 enum nfs_req_result nfs4_op_read_resume(struct nfs_argop4 *op,
 					compound_data_t *data,
@@ -309,13 +313,11 @@ enum nfs_req_result nfs4_op_read_resume(struct nfs_argop4 *op,
 	struct nfs4_read_data *read_data = data->op_data;
 	enum nfs_req_result rc;
 	uint32_t flags;
-
+#ifdef ENABLE_QOS
 	if (read_data->qos_flag & IS_QOS_IO) {
 		bool bypass = read_data->qos_flag & IS_QOS_IO_READ_BYPASS;
 
 		read_data->qos_flag = 0;
-		LogFullDebug(COMPONENT_QOS, "qos_flag IO read nypass_value:%d",
-			     bypass);
 		atomic_postclear_uint32_t_bits(
 			&read_data->flags, ASYNC_PROC_EXIT | ASYNC_PROC_DONE);
 		/*  Do the actual read */
@@ -324,13 +326,10 @@ enum nfs_req_result nfs4_op_read_resume(struct nfs_argop4 *op,
 		flags = atomic_postset_uint32_t_bits(&read_data->flags,
 						     ASYNC_PROC_EXIT);
 		if ((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) {
-			LogFullDebug(COMPONENT_QOS, "ASYNC: bypass%d", bypass);
 			return NFS_REQ_ASYNC_WAIT;
-		} else {
-			LogFullDebug(COMPONENT_QOS, "SYNC: bypass%d", bypass);
 		}
 	}
-
+#endif
 	if (read_data->read_arg.fsal_resume) {
 		/* FSAL is requesting another read2 call on resume */
 		atomic_postclear_uint32_t_bits(
@@ -852,7 +851,6 @@ static enum nfs_req_result nfs4_read(struct nfs_argop4 *op,
 
 	/* Set up args, allocate from heap, iov_len will be 1 */
 	read_data = gsh_calloc(1, sizeof(*read_data));
-	read_data->qos_flag = 0;
 	LogFullDebug(COMPONENT_NFS_V4, "Allocated read_data %p", read_data);
 	read_arg = &read_data->read_arg;
 	read_arg->info = info;
@@ -875,16 +873,18 @@ static enum nfs_req_result nfs4_read(struct nfs_argop4 *op,
 		/* We will be using the io_info that is part of read_data */
 		read_data->info.io_advise = info->io_advise;
 	}
-
+#ifdef ENABLE_QOS
 	if (QoS_Process(size, read_data, data, QOS_READ)) {
 		flags = atomic_postset_uint32_t_bits(&read_data->flags,
 						     ASYNC_PROC_EXIT);
 		read_data->qos_flag |= IS_QOS_IO;
-		read_data->qos_flag |= (unsigned int)bypass << 1;
-		LogFullDebug(COMPONENT_QOS, "read_data %p bypass:%d", read_data,
+		read_data->qos_flag |=
+				(unsigned int)bypass * IS_QOS_IO_READ_BYPASS;
+		LogFullDebug(COMPONENT_QOS, "read_data %p bypass %d", read_data,
 			     bypass);
 		goto out;
 	}
+#endif
 
 again:
 
@@ -904,8 +904,12 @@ out:
 		state_open = NULL;
 	}
 
+#ifdef ENABLE_QOS
 	if ((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE ||
 	    (read_data->qos_flag & IS_QOS_IO)) {
+#else
+	if ((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) {
+#endif
 		/* The read was not finished before we got here. When the
 		 * read completes, nfs4_read_cb() will have to reschedule the
 		 * request for completion. The resume will be resolved by

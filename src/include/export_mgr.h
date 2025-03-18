@@ -164,10 +164,11 @@ struct gsh_export {
 	struct fsal_export *fsal_export;
 	/** CFG: Exported path - static option */
 	struct gsh_refstr *fullpath;
-	/** dpp QOS entry */
+#ifdef ENABLE_QOS
 	/** CFG: QOS data */
 	struct qos_block_config *qos_block;
-	struct QoS_perShare_Class *qos_class;
+	struct QoS_perExport_Class *qos_class;
+#endif
 	/** CFG: PseudoFS path for export - static option */
 	struct gsh_refstr *pseudopath;
 	/** CFG: The following two strings are ONLY used during configuration

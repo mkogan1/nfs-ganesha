@@ -42,12 +42,10 @@ SET(MainServices_STAT_SRCS
    nfs_worker_thread.c
    nfs_rpc_dispatcher_thread.c
    nfs_rpc_tcp_socket_manager_thread.c
-   nfs_qos.c
    nfs_init.c
    nfs_lib.c
    nfs_metrics.c
    nfs_reaper_thread.c
-   ../support/nfs_qosmgr.c
    ../support/client_mgr.c
 )
 
@@ -87,6 +85,14 @@ if(USE_CB_SIMULATOR)
     nfs_rpc_callback_simulator.c
     )
 endif(USE_CB_SIMULATOR)
+
+if(ENABLE_QOS)
+  SET(MainServices_STAT_SRCS
+    ${MainServices_STAT_SRCS}
+    nfs_qos.c
+   ../support/nfs_qosmgr.c
+    )
+endif(ENABLE_QOS)
 
 add_library(MainServices OBJECT ${MainServices_STAT_SRCS})
 add_sanitizers(MainServices)

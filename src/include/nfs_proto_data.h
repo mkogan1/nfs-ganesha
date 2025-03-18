@@ -368,7 +368,9 @@ struct compound_data {
 	const char *opname; /*< Name of the operation */
 	char *tagname;
 	void *op_data; /*< operation specific data for resume */
+#ifdef ENABLE_QOS
 	uint32_t qos_flags;
+#endif
 	nfs41_session_t *session; /*< Related session
 					   (found by OP_SEQUENCE) */
 	sequenceid4 sequence; /*< Sequence ID of the current compound

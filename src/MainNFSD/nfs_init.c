@@ -685,6 +685,7 @@ int nfs_set_param_from_conf(config_file_t parse_tree,
 		return -1;
 	}
 
+#ifdef ENABLE_QOS
 	/* QoS global parameters */
 	(void)load_config_from_parse(parse_tree, &qos_core, &qos_block_config,
 				     true, err_type);
@@ -693,6 +694,11 @@ int nfs_set_param_from_conf(config_file_t parse_tree,
 			"Error while parsing qos configuration");
 		return -1;
 	}
+
+	if (qos_block_config.enable_qos == true)
+		qos_init();
+
+#endif
 
 	/* Worker parameters: ip/name hash table and expiration
 	 * for each entry
@@ -1025,7 +1031,9 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
 	dbus_export_init();
 	dbus_client_init();
 	dbus_cache_init();
+#ifdef ENABLE_QOS
 	dbus_qosmgr_init();
+#endif
 #endif
 
 #ifdef USE_MONITORING
