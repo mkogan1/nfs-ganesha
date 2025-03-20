@@ -469,13 +469,13 @@ void copy_gsh_qos_mem(struct gsh_export *dest, struct gsh_export *src)
  */
 static void print_bucket_values(qos_bucket_t *bucket)
 {
-	LogEvent(COMPONENT_QOS,
+	LogDebug(COMPONENT_QOS,
 		 "wio:%d bw:%ld bw_ldct:%ld mat:%ld tc:%ld trt:%ld ltct:%ld",
 		 bucket->num_ios_waiting, bucket->max_bw_allowed,
 		 bucket->bw_ldct, bucket->max_available_tokens,
 		 bucket->tokens_consumed, bucket->tokens_renew_time,
 		 bucket->token_ldct);
-	LogEvent(COMPONENT_QOS, "max_iops:%ld iops_ldct:%ld iops_consumed:%ld ",
+	LogDebug(COMPONENT_QOS, "max_iops:%ld iops_ldct:%ld iops_consumed:%ld ",
 		 bucket->max_iops_allowed, bucket->iops_ldct,
 		 bucket->iops_consumed);
 }
@@ -493,9 +493,9 @@ static inline void print_class_values(void *qos_class,
 	if (qos_class_type == QOS_EXPORT) {
 		qos_export_t *export = qos_class;
 
-		LogEvent(COMPONENT_QOS, "%s SI:%d s_wio:%d", str,
+		LogDebug(COMPONENT_QOS, "%s SI:%d s_wio:%d", str,
 			 export->export_id, export->num_ios_waiting);
-		LogEvent(COMPONENT_QOS,
+		LogDebug(COMPONENT_QOS,
 			 "bw_e:%d t_e:%d iops_e:%d c_bw:%d c_t:%d c_iops:%d",
 			 export->bw_enabled, export->token_enabled,
 			 export->iops_enabled, export->combined_rw_bw_control,
@@ -507,9 +507,9 @@ static inline void print_class_values(void *qos_class,
 	} else if (qos_class_type == QOS_CLIENT) {
 		qos_client_t *client = qos_class;
 
-		LogEvent(COMPONENT_QOS, "%s CI:%p s_wio:%d", str,
+		LogDebug(COMPONENT_QOS, "%s CI:%p s_wio:%d", str,
 			 client->client_addr, client->num_ios_waiting);
-		LogEvent(COMPONENT_QOS,
+		LogDebug(COMPONENT_QOS,
 			 "bw_e:%d t_e:%d iops_e:%d c_bw:%d c_t:%d c_iops:%d",
 			 client->bw_enabled, client->token_enabled,
 			 client->iops_enabled, client->combined_rw_bw_control,
@@ -785,7 +785,7 @@ static void setNode_pe(qos_export_t *node, uint16_t export_id,
 	if (g_qos_config->enable_qos == false)
 		return;
 
-	LogEvent(COMPONENT_QOS, "Added new config for :%d", export_id);
+	LogDebug(COMPONENT_QOS, "Added new config for :%d", export_id);
 	set_class_values(node, QOS_EXPORT, qos_block);
 	print_class_values(node, QOS_EXPORT, "debugdp");
 }
@@ -806,7 +806,7 @@ static void setNode_pc(qos_client_t *node, sockaddr_t *client_addr,
 	if (g_qos_config->enable_qos == false)
 		return;
 
-	LogEvent(COMPONENT_QOS, "Added new config for :%p", client_addr);
+	LogDebug(COMPONENT_QOS, "Added new config for :%p", client_addr);
 	set_class_values(node, QOS_CLIENT, qos_block);
 	print_class_values(node, QOS_CLIENT, "debugdp");
 }
