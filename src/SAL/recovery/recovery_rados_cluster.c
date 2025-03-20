@@ -227,6 +227,16 @@ static void rados_cluster_end_grace(void)
 	gsh_refstr_put(old_oid);
 }
 
+static inline void form_rec_obj(char *rec_obj, nfs_client_id_t *clientid)
+{
+	uint64_t hsh;
+
+	hsh = hash_sockaddr(&clientid->cid_client_record->cr_server_addr, true);
+
+	(void)snprintf(rec_obj, NI_MAXHOST - 1, "rec-%16.16lx:ip_%" PRIu64, cur,
+		       hsh);
+}
+
 void rados_cluster_add_clid(nfs_client_id_t *clientid)
 {
 	struct gsh_refstr *recov_oid;
@@ -234,9 +244,7 @@ void rados_cluster_add_clid(nfs_client_id_t *clientid)
 
 	if (nfs_param.nfsv4_param.recovery_backend_ipbased) {
 		/* Use IP based recovery DB for storing client info */
-		(void)snprintf(rec_obj, NI_MAXHOST - 1, "rec-%16.16lx:ip_%d",
-			       cur,
-			       clientid->cid_client_record->cr_server_addr);
+		form_rec_obj(rec_obj, clientid);
 		rados_kv_add_clid_impl(clientid, rec_obj);
 	} else {
 		rcu_read_lock();
@@ -254,9 +262,7 @@ void rados_cluster_rm_clid(nfs_client_id_t *clientid)
 
 	if (nfs_param.nfsv4_param.recovery_backend_ipbased) {
 		/* Use IP based recovery DB for storing client info */
-		(void)snprintf(rec_obj, NI_MAXHOST - 1, "rec-%16.16lx:ip_%d",
-			       cur,
-			       clientid->cid_client_record->cr_server_addr);
+		form_rec_obj(rec_obj, clientid);
 		rados_kv_rm_clid_impl(clientid, rec_obj);
 	} else {
 		rcu_read_lock();

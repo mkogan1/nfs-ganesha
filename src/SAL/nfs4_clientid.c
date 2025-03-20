@@ -1869,7 +1869,7 @@ uint64_t client_record_value_hash(nfs_client_record_t *key)
 	uint64_t other;
 
 	other = key->cr_pnfs_flags;
-	other = (other << 32) | key->cr_server_addr;
+	other = (other << 32) | hash_sockaddr(&key->cr_server_addr, true);
 	return CityHash64WithSeed(key->cr_client_val, key->cr_client_val_len,
 				  other);
 }
@@ -1935,6 +1935,8 @@ uint64_t client_record_rbt_hash_func(hash_parameter_t *hparam,
 int compare_client_record(struct gsh_buffdesc *buff1,
 			  struct gsh_buffdesc *buff2)
 {
+	int rc;
+
 	nfs_client_record_t *pkey1 = buff1->addr;
 	nfs_client_record_t *pkey2 = buff2->addr;
 
@@ -1942,6 +1944,11 @@ int compare_client_record(struct gsh_buffdesc *buff1,
 		return 1;
 	if (pkey1->cr_pnfs_flags != pkey2->cr_pnfs_flags)
 		return 1;
+
+	rc = cmp_sockaddr(&pkey1->cr_server_addr, &pkey2->cr_server_addr, true);
+
+	if (rc != 0)
+		return rc;
 
 	return memcmp(pkey1->cr_client_val, pkey2->cr_client_val,
 		      pkey1->cr_client_val_len);
@@ -1974,15 +1981,17 @@ int display_client_record_val(struct display_buffer *dspbuf,
 /**
  * @brief Get a client record from the table
  *
- * @param[in] value Client owner name
- * @param[in] len   Length of owner name
+ * @param[in] value      Client owner name
+ * @param[in] len        Length of owner name
+ * @param[in] pnfs_flags For 4.1 - pnfs flags
+ * @param[in] serveraddr the server (destination) address
  *
  * @return The client record or NULL.
  */
 nfs_client_record_t *get_client_record(const char *const value,
 				       const size_t len,
 				       const uint32_t pnfs_flags,
-				       const uint32_t server_addr)
+				       const sockaddr_t *server_addr)
 {
 	nfs_client_record_t *record;
 	nfs_client_record_t *old;
@@ -2002,7 +2011,7 @@ nfs_client_record_t *get_client_record(const char *const value,
 	record->cr_unconfirmed_rec = NULL;
 	memcpy(record->cr_client_val, value, len);
 	record->cr_pnfs_flags = pnfs_flags;
-	record->cr_server_addr = server_addr;
+	record->cr_server_addr = *server_addr;
 	buffkey.addr = record;
 	buffkey.len = sizeof(*record);
 

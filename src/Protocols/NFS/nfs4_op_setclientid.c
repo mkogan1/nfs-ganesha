@@ -84,7 +84,7 @@ enum nfs_req_result nfs4_op_setclientid(struct nfs_argop4 *op,
 	clientid4 clientid;
 	verifier4 verifier;
 	int rc;
-	in_addr_t server_addr = 0;
+	sockaddr_t *server_addr;
 
 	resp->resop = NFS4_OP_SETCLIENTID;
 
@@ -119,7 +119,7 @@ enum nfs_req_result nfs4_op_setclientid(struct nfs_argop4 *op,
 		arg_SETCLIENTID4->callback_ident);
 
 	/* server IP required for IP based recovery backend */
-	server_addr = get_raddr(data->req->rq_xprt);
+	server_addr = svc_getrpclocal(data->req->rq_xprt);
 
 	/* Do we already have one or more records for client id (x)? */
 	client_record = get_client_record(arg_SETCLIENTID4->client.id.id_val,

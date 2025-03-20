@@ -841,8 +841,8 @@ struct nfs_client_record_t {
 						   associated with this
 						   client name, if there is
 						   one. */
-	uint32_t cr_server_addr; /*< Server IP address the client connected to
-				  */
+	sockaddr_t cr_server_addr; /*< Server IP address the client connected to
+				    */
 	uint32_t cr_pnfs_flags; /*< pNFS flags.  RFC 5661 allows us
 				     to treat identical co_owners with
 				     different pNFS flags as
