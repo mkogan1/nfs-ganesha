@@ -639,6 +639,11 @@ typedef struct nfs_version4_parameter {
 	/** The eir_server_owner. Defaults to NULL and is settable
 	    with server_owner. */
 	char *server_owner;
+	/** When true, Ganesha will operate in virtual server mode, where it
+	 *  makes each server IP address appear to clients as a separate
+	 *  server.
+	 */
+	bool virtual_server;
 	/** This config param is deprecated. Use `domainname` defined
 	    in `directory_services_param` struct. */
 	char *domainname;

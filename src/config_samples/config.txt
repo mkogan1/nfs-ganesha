@@ -287,6 +287,8 @@ NFSV4 {}
 
 	Server_Owner(string, default "")
 
+	Virtual_Server(bool, default false)
+
 	Max_Open_States_Per_Client(uint32, range 0 to UINT32_MAX, default 0)
 
 	Expired_Client_Threshold(uint32, range 0 to 256, default 16)
