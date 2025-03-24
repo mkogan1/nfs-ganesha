@@ -1014,6 +1014,10 @@ int nfsv4_init_params(void)
 	} else {
 		cid_server_scope = nfs_param.nfsv4_param.server_scope;
 	}
+
+	LogInfo(COMPONENT_NFS_V4, "Server Owner %s Server Scope %s",
+		cid_server_owner, cid_server_scope);
+
 	return 0;
 }
 

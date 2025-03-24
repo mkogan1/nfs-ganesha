@@ -122,7 +122,8 @@ enum nfs_req_result nfs4_op_exchange_id(struct nfs_argop4 *op,
 	EXCHANGE_ID4resok *const res_EXCHANGE_ID4_ok =
 		&resp->nfs_resop4_u.opexchange_id.EXCHANGE_ID4res_u.eir_resok4;
 	uint32_t resp_size = EXCHANGE_ID_BASE_RESP_SIZE;
-	int owner_len, scope_len;
+	int owner_len, scope_len, major_id_len;
+	char ipname[SOCK_NAME_MAX];
 
 	GSH_AUTO_TRACEPOINT(
 		nfs4, op_exchange_id_start, TRACE_INFO,
@@ -408,11 +409,29 @@ return_ok:
 	res_EXCHANGE_ID4_ok->eir_state_protect.spr_how =
 		unconf->cid_state_protect_how;
 
-	temp = gsh_malloc(owner_len + 1);
+	if (nfs_param.nfsv4_param.virtual_server) {
+		if (!sprint_sockip(server_addr, ipname, sizeof(ipname)))
+			(void)strlcpy(ipname, "<unknown>", sizeof(ipname));
+
+		major_id_len = owner_len + strlen(ipname);
+	} else {
+		major_id_len = owner_len;
+	}
+
+	temp = gsh_malloc(major_id_len + 1);
+
+	/* Copy cid_server_owner plus terminating NUL */
 	memcpy(temp, cid_server_owner, owner_len + 1);
 
+	LogDebug(COMPONENT_CLIENTID, "EXCHNAGE_ID major_id %s", temp);
+
+	if (nfs_param.nfsv4_param.virtual_server) {
+		/* Copy ipname + terminating NUL */
+		memcpy(temp + owner_len, ipname, major_id_len - owner_len + 1);
+	}
+
 	res_EXCHANGE_ID4_ok->eir_server_owner.so_major_id.so_major_id_len =
-		owner_len;
+		major_id_len;
 	res_EXCHANGE_ID4_ok->eir_server_owner.so_major_id.so_major_id_val =
 		temp;
 
