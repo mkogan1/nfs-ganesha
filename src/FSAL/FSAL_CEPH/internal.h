@@ -253,6 +253,7 @@ int ceph_get_acl(struct ceph_export *export, struct ceph_handle *objhandle,
 #endif /* CEPHFS_POSIX_ACL */
 
 extern pthread_rwlock_t cmount_lock;
+extern struct avltree avl_cmount;
 
 void ceph_mount_init(void);
 struct ceph_mount *ceph_mount_lookup(const struct avltree_node *key);
