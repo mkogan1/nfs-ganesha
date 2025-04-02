@@ -50,6 +50,7 @@
 #include "statx_compat.h"
 #include "nfs_core.h"
 #include "sal_functions.h"
+#include "city.h"
 
 /**
  * The name of this module.
@@ -102,9 +103,6 @@ struct ceph_fsal_module
 #endif
 				    .expire_time_parent = -1,
 			    } } };
-
-/* ceph mount handle for node takeover activity */
-struct ceph_mount *takeover_cm = NULL;
 
 static int ceph_conf_commit(void *node, void *link_mem, void *self_struct,
 			    struct config_error_type *err_type)
@@ -354,11 +352,31 @@ static inline void enable_delegations(struct ceph_mount *cm)
 
 #ifdef USE_FSAL_CEPH_RECLAIM_RESET
 #define RECLAIM_UUID_PREFIX "ganesha-"
+
+/* create uuid for ceph client */
+void create_unique_id(struct ceph_mount *cm, char *nodeid, char **uniq_id)
+{
+	size_t len;
+	char buff[8192]; /* large buffer to accommodate lengthy path */
+	uint64_t hashkey;
+
+	/* create string containing nodeid, userid, fs_name and mount path */
+	(void)snprintf(buff, 8192, "%s%s%s%s", nodeid, cm->cm_user_id,
+		       cm->cm_fs_name, cm->cm_mount_path);
+	LogEvent(COMPONENT_FSAL, "ceph_mount hash data: %s", buff);
+	hashkey = CityHash64(buff, strlen(buff));
+	len = strlen(RECLAIM_UUID_PREFIX) + 128 + 1;
+	*uniq_id = gsh_malloc(len);
+	/* uniq_id will be always like "ganesha-<64-bytes-hash>" */
+	(void)snprintf(*uniq_id, len, RECLAIM_UUID_PREFIX "0x%" PRIx64,
+		       hashkey);
+	LogDebug(COMPONENT_FSAL, "Unique id for ceph_mount : %s", *uniq_id);
+}
+
 static int reclaim_reset(struct ceph_mount *cm)
 {
 	int ceph_status;
 	char *nodeid, *uuid;
-	size_t len;
 
 	/*
 	 * Set long timeout for the session to ensure that MDS doesn't lose
@@ -367,8 +385,9 @@ static int reclaim_reset(struct ceph_mount *cm)
 	ceph_set_session_timeout(cm->cmount, 300);
 
 	/*
-	 * For the uuid here, we just use whatever ganesha- + whatever
-	 * nodeid the recovery backend reports.
+	 * For combination of nodeid, fs_name, userid and mount path, there is
+	 * ceph client being used. The uuid should be created for this
+	 * combination.
 	 */
 	ceph_status = nfs_recovery_get_nodeid(&nodeid);
 	if (ceph_status != 0) {
@@ -376,13 +395,7 @@ static int reclaim_reset(struct ceph_mount *cm)
 			 strerror(errno));
 		return ceph_status;
 	}
-
-	len = strlen(RECLAIM_UUID_PREFIX) + strlen(nodeid) + 1 + 4 + 1;
-	uuid = gsh_malloc(len);
-	(void)snprintf(uuid, len, RECLAIM_UUID_PREFIX "%s-%4.4hx", nodeid,
-		       cm->cm_export_id);
-
-	/* If this fails, log a message but soldier on */
+	create_unique_id(cm, nodeid, &uuid);
 	LogDebug(COMPONENT_FSAL, "Issuing reclaim reset for %s", uuid);
 	ceph_status = ceph_start_reclaim(cm->cmount, uuid, CEPH_RECLAIM_RESET);
 	if (ceph_status) {
@@ -392,8 +405,11 @@ static int reclaim_reset(struct ceph_mount *cm)
 		 * throw the error and exit */
 		LogEvent(COMPONENT_FSAL, "start_reclaim failed: (%d) %s",
 			 ceph_status, strerror(-ceph_status));
-		if ((-ceph_status) != ENOENT)
+		if ((-ceph_status) != ENOENT) {
+			gsh_free(nodeid);
+			gsh_free(uuid);
 			return ceph_status;
+		}
 	}
 	ceph_finish_reclaim(cm->cmount);
 	ceph_set_uuid(cm->cmount, uuid);
@@ -406,37 +422,42 @@ static int reclaim_reset(struct ceph_mount *cm)
 fsal_status_t node_takeover_reclaim(struct fsal_module *module_in, char *nodeid)
 {
 	int ceph_status;
-	char *uuid;
-	size_t len;
+	struct avltree_node *node;
 
-	if (takeover_cm == NULL) {
-		LogCrit(COMPONENT_FSAL,
-			"Ceph mount handle for takeover is invalid");
-		return fsalstat(ERR_FSAL_INVAL, 0);
-	}
-	len = strlen(RECLAIM_UUID_PREFIX) + strlen(nodeid) + 1 + 4 + 1;
-	uuid = gsh_malloc(len);
-	/* uuid will be always like "ganesha-node<n>-0001" */
-	(void)snprintf(uuid, len, RECLAIM_UUID_PREFIX "%s-%4.4hx", nodeid, 1);
+	PTHREAD_RWLOCK_rdlock(&cmount_lock);
+	/* Go through all cmounts and carry out reclaim operation */
+	for (node = avltree_first(&avl_cmount); node != NULL;
+	     node = avltree_next(node)) {
+		struct ceph_mount *cm;
+		char *uuid;
 
-	/* If this fails, log a message but soldier on */
-	LogDebug(COMPONENT_FSAL, "Issuing reclaim reset for node %s, uuid %s",
-		 nodeid, uuid);
-	ceph_status = ceph_start_reclaim(takeover_cm->cmount, uuid,
-					 CEPH_RECLAIM_RESET);
-	if (ceph_status) {
-		/* Error ENOENT indicates that most likely this is first run
-		 * of this Ganesha instance, so can be ignored. Any other
-		 * failure indicates problem with this ceph client, better
-		 * throw the error and exit */
-		LogEvent(COMPONENT_FSAL,
-			 "Ceph client reclaim failed (Node %s): %s", nodeid,
-			 strerror(-ceph_status));
-		if ((-ceph_status) != ENOENT)
-			return ceph2fsal_error(ceph_status);
+		cm = avltree_container_of(node, struct ceph_mount,
+					  cm_avl_mount);
+		create_unique_id(cm, nodeid, &uuid);
+
+		LogDebug(COMPONENT_FSAL,
+			 "Issuing reclaim reset for node %s, uuid %s", nodeid,
+			 uuid);
+		ceph_status = ceph_start_reclaim(cm->cmount, uuid,
+						 CEPH_RECLAIM_RESET);
+		gsh_free(uuid);
+		if (ceph_status) {
+			/* Error ENOENT indicates that most likely the failed
+			 * node was not running before. Ignoring this error
+			 * now, but may need to revisit in future. Any other
+			 * failure indicates problem with reclaim activity,
+			 * better throw the error and exit */
+			LogEvent(COMPONENT_FSAL,
+				 "Ceph client reclaim failed (Node %s): %s",
+				 nodeid, strerror(-ceph_status));
+			if ((-ceph_status) != ENOENT)
+				break;
+		}
+		ceph_finish_reclaim(cm->cmount);
 	}
-	ceph_finish_reclaim(takeover_cm->cmount);
-	gsh_free(uuid);
+	PTHREAD_RWLOCK_unlock(&cmount_lock);
+	if (ceph_status)
+		return ceph2fsal_error(ceph_status);
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 #undef RECLAIM_UUID_PREFIX
@@ -775,11 +796,6 @@ static fsal_status_t create_export(struct fsal_module *module_in,
 			CTX_FULLPATH(op_ctx), strerror(-ceph_status));
 		goto error;
 	}
-
-	/* Store the ceph mount handle for future use for takeover activity */
-	takeover_cm = cm;
-	LogDebug(COMPONENT_FSAL, "Ceph mount handle for takeover activity %p",
-		 takeover_cm);
 
 	ceph_status = ceph_mount(cm->cmount, cm->cm_mount_path);
 
