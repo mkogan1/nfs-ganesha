@@ -428,6 +428,8 @@ static int reclaim_reset(struct ceph_mount *cm)
 	return 0;
 }
 
+extern struct avltree avl_cmount;
+
 /* ceph client reclaim for takeover of failed node */
 fsal_status_t node_takeover_reclaim(struct fsal_module *module_in, char *nodeid)
 {
