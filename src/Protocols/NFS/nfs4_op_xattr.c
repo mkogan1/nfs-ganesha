@@ -78,9 +78,6 @@ enum nfs_req_result nfs4_op_getxattr(struct nfs_argop4 *op,
 	res_GETXATTR4->GETXATTR4res_u.resok4.gxr_value.utf8string_len = 0;
 	res_GETXATTR4->GETXATTR4res_u.resok4.gxr_value.utf8string_val = NULL;
 
-	gxr_value.utf8string_len = XATTR_VALUE_SIZE;
-	gxr_value.utf8string_val = gsh_malloc(gxr_value.utf8string_len + 1);
-
 	/* Do basic checks on a filehandle */
 	res_GETXATTR4->status = nfs4_sanity_check_FH(data, NO_FILE_TYPE, false);
 
@@ -94,15 +91,19 @@ enum nfs_req_result nfs4_op_getxattr(struct nfs_argop4 *op,
 		return NFS_REQ_ERROR;
 	}
 
-	fsal_status = obj_handle->obj_ops->getxattrs(
-		obj_handle, &arg_GETXATTR4->gxa_name, &gxr_value);
+	gxr_value.utf8string_len = XATTR_VALUE_SIZE;
+	gxr_value.utf8string_val = gsh_malloc(gxr_value.utf8string_len + 1);
+
+	fsal_status = obj_handle->obj_ops->getxattrs(obj_handle,
+						     &arg_GETXATTR4->gxa_name,
+						     &gxr_value);
 	if (FSAL_IS_ERROR(fsal_status)) {
+		gsh_free(gxr_value.utf8string_val);
 		if (fsal_status.major == ERR_FSAL_XATTR2BIG) {
 			LogDebug(COMPONENT_NFS_V4,
 				 "FSAL buffer len %d too small",
 				 XATTR_VALUE_SIZE);
 			/* Get size of xattr value  */
-			gsh_free(gxr_value.utf8string_val);
 			gxr_value.utf8string_len = 0;
 			gxr_value.utf8string_val = NULL;
 			fsal_status = obj_handle->obj_ops->getxattrs(
@@ -127,6 +128,7 @@ enum nfs_req_result nfs4_op_getxattr(struct nfs_argop4 *op,
 			if (FSAL_IS_ERROR(fsal_status)) {
 				res_GETXATTR4->status = nfs4_Errno_state(
 					state_error_convert(fsal_status));
+				gsh_free(gxr_value.utf8string_val);
 				return NFS_REQ_ERROR;
 			}
 		} else {
