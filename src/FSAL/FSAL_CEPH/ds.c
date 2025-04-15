@@ -38,6 +38,7 @@
 
 #include "config.h"
 
+#include <linux/fscrypt.h>
 #include <cephfs/libcephfs.h>
 #include <fcntl.h>
 #include "fsal_api.h"

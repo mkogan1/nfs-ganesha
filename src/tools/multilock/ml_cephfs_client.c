@@ -25,6 +25,7 @@
  */
 
 #include <fcntl.h>
+#include <linux/fscrypt.h>
 #include <cephfs/libcephfs.h>
 #include <pthread.h>
 #include <stdlib.h>

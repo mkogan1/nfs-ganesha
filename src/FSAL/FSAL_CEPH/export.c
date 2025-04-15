@@ -39,6 +39,7 @@
 #include <limits.h>
 #include <stdint.h>
 #include <sys/statvfs.h>
+#include <linux/fscrypt.h>
 #include <cephfs/libcephfs.h>
 #include "abstract_mem.h"
 #include "fsal.h"

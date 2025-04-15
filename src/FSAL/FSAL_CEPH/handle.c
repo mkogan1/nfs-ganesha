@@ -38,6 +38,7 @@
 #endif
 #include <fcntl.h>
 #include <sys/xattr.h>
+#include <linux/fscrypt.h>
 #include <cephfs/libcephfs.h>
 #include "fsal.h"
 #include "fsal_types.h"

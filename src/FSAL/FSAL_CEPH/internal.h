@@ -39,6 +39,7 @@
 #ifndef FSAL_CEPH_INTERNAL_INTERNAL__
 #define FSAL_CEPH_INTERNAL_INTERNAL__
 
+#include <linux/fscrypt.h>
 #include <cephfs/libcephfs.h>
 #include "fsal.h"
 #include "fsal_types.h"

@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <string.h>
+#include <linux/fscrypt.h>
 #include <cephfs/libcephfs.h>
 #include "common_utils.h"
 #include "fsal_types.h"

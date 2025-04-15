@@ -42,6 +42,7 @@
 #include <sys/acl.h>
 #include <acl/libacl.h>
 #endif /* CEPHFS_POSIX_ACL */
+#include <linux/fscrypt.h>
 #include <cephfs/libcephfs.h>
 #include "fsal_types.h"
 #include "fsal.h"
