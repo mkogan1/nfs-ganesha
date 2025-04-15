@@ -42,6 +42,9 @@
 #include <sys/acl.h>
 #include <acl/libacl.h>
 #endif /* CEPHFS_POSIX_ACL */
+#ifdef HAVE_LINUX_FSCRYPT_H
+#include <linux/fscrypt.h>
+#endif
 #include <cephfs/libcephfs.h>
 #include "fsal_types.h"
 #include "fsal.h"
@@ -53,6 +56,10 @@
 #ifdef CEPHFS_POSIX_ACL
 #include "posix_acls.h"
 #endif /* CEPHFS_POSIX_ACL */
+
+#ifndef USE_FSAL_CEPH_FSCRYPT
+#define ceph_ll_is_encrypted(a, b, c) (&*c != &*c)
+#endif
 
 /**
  * @brief Construct a new filehandle
@@ -73,6 +80,7 @@ void construct_handle(const struct ceph_statx *stx, struct Inode *i,
 {
 	/* Pointer to the handle under construction */
 	struct ceph_handle *constructing = NULL;
+	char enctag[512]; // only 8 bytes max?
 
 	assert(i);
 
@@ -82,6 +90,8 @@ void construct_handle(const struct ceph_statx *stx, struct Inode *i,
 #ifdef CEPH_NOSNAP
 	constructing->key.hhdl.chk_snap = stx->stx_dev;
 #endif /* CEPH_NOSNAP */
+	constructing->is_encrypted =
+		ceph_ll_is_encrypted(export->cmount, i, enctag) > 0;
 	constructing->key.hhdl.chk_fscid = export->fscid;
 	constructing->key.export_id = export->export.export_id;
 	constructing->i = i;

@@ -39,6 +39,9 @@
 #ifndef FSAL_CEPH_INTERNAL_INTERNAL__
 #define FSAL_CEPH_INTERNAL_INTERNAL__
 
+#ifdef HAVE_LINUX_FSCRYPT_H
+#include <linux/fscrypt.h>
+#endif
 #include <cephfs/libcephfs.h>
 #include "fsal.h"
 #include "fsal_types.h"
@@ -163,6 +166,7 @@ struct ceph_handle {
 	uint64_t rw_serial;
 	uint64_t rw_max_len;
 #endif /* CEPH_PNFS */
+	char is_encrypted;
 };
 
 #ifdef CEPH_PNFS

@@ -22,6 +22,9 @@
  */
 
 #include "gsh_rpc.h"
+#ifdef HAVE_LINUX_FSCRYPT_H
+#include <linux/fscrypt.h>
+#endif
 #include <cephfs/libcephfs.h>
 #include "fsal.h"
 #include "fsal_types.h"
