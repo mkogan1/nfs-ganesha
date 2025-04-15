@@ -529,8 +529,7 @@ static inline void print_class_values(void *qos_class,
  * @param [in] max_tokens Maximum number of tokens allowed in the bucket.
  * @param [in] tokens_renew_time Time interval for renewing tokens in seconds.
  */
-static void set_bucket_value_token(qos_bucket_t *bucket,
-				   uint64_t max_tokens,
+static void set_bucket_value_token(qos_bucket_t *bucket, uint64_t max_tokens,
 				   uint64_t tokens_renew_time)
 {
 	bucket->max_available_tokens = max_tokens;
@@ -2544,7 +2543,6 @@ bool ps_io_control_cb(struct gsh_export *gsh_export, void *state)
 	if (export && export->bw_enabled)
 		resume_bw_io_pe(export, *(unsigned int *)state);
 
-
 	if (export && export->iops_enabled)
 		resume_iops_pe(export, *(unsigned int *)state);
 
@@ -2566,7 +2564,6 @@ bool pc_io_control_cb(struct gsh_client *cl, void *state)
 
 	if (client && client->bw_enabled)
 		resume_bw_io_pc(client, *(unsigned int *)state);
-
 
 	if (client && client->iops_enabled)
 		resume_iops_pc(client, *(unsigned int *)state);
@@ -2977,24 +2974,13 @@ out:
 unsigned int QoS_Process_iops(compound_data_t *data)
 {
 	unsigned int ret = QOS_TASK_ASYNC_NOT_SCHEDULED;
-	struct gsh_export *export = NULL;
 	uint32_t op_type = QOS_WRITE;
 
-	if (g_qos_config->enable_qos == 0 ||
-	    g_qos_config->enable_iops_control == 0)
+	if ((g_qos_config->enable_qos == 0) ||
+	    (g_qos_config->enable_iops_control == 0) ||
+	    (op_ctx->ctx_export == NULL) ||
+	    (strlen(op_ctx->ctx_export->cfg_fullpath) <= 2))
 		return ret;
-
-	if ((g_qos_config->qos_type != QOS_PER_CLIENT_ENABLED) &&
-	    (op_ctx->ctx_export == NULL))
-		return ret;
-
-	export = op_ctx->ctx_export;
-	if (strlen(export->cfg_fullpath) <= 2) {
-		LogFullDebug(COMPONENT_QOS, "root FH :%s :%ld ",
-			     export->cfg_fullpath,
-			     strlen(export->cfg_fullpath));
-		return ret;
-	}
 
 	if (g_qos_config->qos_type == QOS_PER_EXPORT_ENABLED)
 		ret = QoS_Process_iops_pe(data, op_type);
