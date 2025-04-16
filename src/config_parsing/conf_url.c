@@ -28,9 +28,22 @@
 
 #include "conf_url.h"
 
+#if defined(LINUX) && !defined(SANITIZE_ADDRESS)
+#define MY_RTLD_FLAGS (RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND)
+#elif defined(FREEBSD) || defined(SANITIZE_ADDRESS)
+#define MY_RTLD_FLAGS (RTLD_NOW | RTLD_LOCAL)
+#endif
+
 static pthread_rwlock_t url_rwlock;
 static struct glist_head url_providers;
+static struct glist_head config_plugins;
 static regex_t url_regex;
+
+struct gsh_config_plugin {
+	struct glist_head link;
+	const char *name;
+	void *handle;
+};
 
 /** @brief register handler for new url type
  */
@@ -84,11 +97,7 @@ static struct {
 static void load_rados_config(void)
 {
 	rados_urls.dl = dlopen("libganesha_rados_urls.so",
-#if defined(LINUX) && !defined(SANITIZE_ADDRESS)
-			       RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
-#elif defined(FREEBSD) || defined(SANITIZE_ADDRESS)
-			       RTLD_NOW | RTLD_LOCAL);
-#endif
+			       MY_RTLD_FLAGS);
 
 	if (rados_urls.dl) {
 		rados_urls.pkginit =
@@ -116,6 +125,7 @@ static void load_rados_config(void)
 void config_url_init(void)
 {
 	glist_init(&url_providers);
+	glist_init(&config_plugins);
 	PTHREAD_RWLOCK_init(&url_rwlock, NULL);
 
 /* init well-known URL providers */
@@ -134,12 +144,22 @@ void config_url_init(void)
 void config_url_shutdown(void)
 {
 	struct gsh_url_provider *url_p;
+	struct gsh_config_plugin *plugin_p;
+	void *handle;
 
 	PTHREAD_RWLOCK_wrlock(&url_rwlock);
 	while ((url_p = glist_first_entry(&url_providers,
 					  struct gsh_url_provider, link))) {
 		glist_del(&url_p->link);
 		url_p->url_shutdown();
+	}
+
+	while ((plugin_p = glist_first_entry(&config_plugins,
+			struct gsh_config_plugin, link))) {
+		handle = plugin_p->handle;
+		glist_del(&plugin_p->link);
+		gsh_free(plugin_p);
+		dlclose(handle);
 	}
 	PTHREAD_RWLOCK_unlock(&url_rwlock);
 
@@ -151,6 +171,40 @@ void config_url_shutdown(void)
 	rados_urls.dl = NULL;
 #endif
 	PTHREAD_RWLOCK_destroy(&url_rwlock);
+}
+
+/** @brief map plugin into memory and remember it
+ */
+int config_plugin_load(char *filename)
+{
+	void *handle;
+	char *fn;
+	int rc = ENXIO;
+	struct gsh_config_plugin *plugin_p;
+	plugin_p = gsh_malloc(sizeof *plugin_p);
+	fn = gsh_strdup(filename);
+	memset(plugin_p, 0, sizeof *plugin_p);
+	PTHREAD_RWLOCK_wrlock(&url_rwlock);
+	handle = dlopen(fn, MY_RTLD_FLAGS);
+	if (!handle) {
+		goto error;
+	}
+	plugin_p->name = fn;
+	plugin_p->handle = handle;
+	glist_add_tail(&config_plugins, &plugin_p->link);
+	plugin_p = 0;
+	fn = 0;
+	rc = 0;
+error:
+	if (plugin_p) {
+		LogWarn(COMPONENT_CONFIG, "Can't dlopen config plugin <%s>: %s", fn, dlerror());
+		gsh_free(plugin_p);
+	}
+	if (fn) {
+		gsh_free(fn);
+	}
+	PTHREAD_RWLOCK_unlock(&url_rwlock);
+	return rc;
 }
 
 int gsh_rados_url_setup_watch(void)
