@@ -43,6 +43,7 @@
 #include "nfs_core.h"
 #include "sal_functions.h"
 #include "recovery_rados.h"
+#include "FSAL/fsal_init.h"
 
 static rados_write_op_t grace_op;
 static pthread_mutex_t grace_op_lock;
@@ -122,9 +123,10 @@ void rados_ng_cleanup(void)
 	PTHREAD_MUTEX_destroy(&grace_op_lock);
 }
 
-struct cleanup_list_element rados_ng_cleanup_element = {
-	.clean = rados_ng_cleanup,
-};
+MODULE_FINI void rados_ng_unload(void)
+{
+	rados_ng_cleanup();
+}
 
 static int rados_ng_init(void)
 {
@@ -134,8 +136,6 @@ static int rados_ng_init(void)
 	rados_write_op_t op;
 
 	PTHREAD_MUTEX_init(&grace_op_lock, NULL);
-
-	RegisterCleanup(&rados_ng_cleanup_element);
 
 	ret = set_nodeid();
 	if (ret < 0) {
