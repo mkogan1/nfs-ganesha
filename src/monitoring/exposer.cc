@@ -181,13 +181,19 @@ Exposer::~Exposer()
 	stop();
 }
 
-void Exposer::start(uint16_t port)
+void Exposer::start(const sockaddr_t *addr, uint16_t port)
 {
 	const std::lock_guard<std::mutex> lock(mutex_);
 	if (running_)
 		PFATAL("Already running");
 
-	server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+	if (addr->ss_family == AF_INET6)
+		server_fd_ = socket(AF_INET6, SOCK_STREAM, 0);
+	else if (addr->ss_family == AF_INET)
+		server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+	else
+		PFATAL("Unsupported address family");
+
 	if (server_fd_ == -1)
 		PFATAL("Failed to create socket");
 
@@ -195,13 +201,22 @@ void Exposer::start(uint16_t port)
 	if (setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
 		PFATAL("Failed to set socket options");
 
-	struct sockaddr_in address;
-	address.sin_family = AF_INET;
-	address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons(port);
+	if (addr->ss_family == AF_INET6) {
+		struct sockaddr_in6 addr6;
+		addr6.sin6_family = AF_INET6;
+		addr6.sin6_addr = ((struct sockaddr_in6 *)addr)->sin6_addr;
+		addr6.sin6_port = htons(port);
+		if (bind(server_fd_, (struct sockaddr *)&addr6, sizeof(addr6)) == -1)
+			PFATAL("Failed to bind socket, IPv6");
+	} else {
+		struct sockaddr_in addr4;
+		addr4.sin_family = AF_INET;
+		addr4.sin_addr = ((struct sockaddr_in *)addr)->sin_addr;
+		addr4.sin_port = htons(port);
+		if (bind(server_fd_, (struct sockaddr *)&addr4, sizeof(addr4)) == -1)
+			PFATAL("Failed to bind socket, IPv4");
+	}
 
-	if (bind(server_fd_, (struct sockaddr *)&address, sizeof(address)))
-		PFATAL("Failed to bind socket");
 	if (listen(server_fd_, 3))
 		PFATAL("Failed to listen on socket");
 

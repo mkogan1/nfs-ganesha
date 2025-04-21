@@ -451,14 +451,16 @@ void monitoring_register_export_label(const export_id_t export_id,
 	exportLabels.InsertOrUpdate(export_id, std::string(label));
 }
 
-void monitoring__init(uint16_t port, bool enable_dynamic_metrics)
+void monitoring__init(const sockaddr_t *monitoring_addr,
+		      uint16_t port,
+		      bool enable_dynamic_metrics)
 {
 	static bool initialized = false;
 	if (initialized)
 		return;
 	if (enable_dynamic_metrics)
 		dynamic_metrics = std::make_unique<DynamicMetrics>(registry);
-	exposer.start(port);
+	exposer.start(monitoring_addr, port);
 	initialized = true;
 }
 

@@ -575,7 +575,8 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef USE_MONITORING
-	monitoring__init(nfs_param.core_param.monitoring_port,
+	monitoring__init(&nfs_param.core_param.monitoring_addr,
+			 nfs_param.core_param.monitoring_port,
 			 nfs_param.core_param.enable_dynamic_metrics);
 #endif /* USE_MONITORING */
 
@@ -584,6 +585,7 @@ int main(int argc, char *argv[])
 		LogCrit(COMPONENT_INIT, "Failed to initialize server packages");
 		goto fatal_die;
 	}
+
 	/* Load Data Server entries from parsed file
 	 * returns the number of DS entries.
 	 */
