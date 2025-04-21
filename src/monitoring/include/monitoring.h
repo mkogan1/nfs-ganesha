@@ -69,6 +69,7 @@ extern "C" {
 #endif
 
 typedef uint16_t export_id_t;
+typedef struct sockaddr_storage sockaddr_t;
 
 /* Metric value units. */
 #define METRIC_UNIT_NONE (NULL)
@@ -164,7 +165,9 @@ histogram_buckets_t monitoring__buckets_exp2_compact(void);
 void monitoring_register_export_label(export_id_t export_id, const char *label);
 
 /* Inits monitoring module and exposes a Prometheus-format HTTP endpoint. */
-void monitoring__init(uint16_t port, bool enable_dynamic_metrics);
+void monitoring__init(const sockaddr_t *monitoring_addr,
+		      uint16_t port,
+		      bool enable_dynamic_metrics);
 
 /*
  * The following two functions generate the following metrics,
