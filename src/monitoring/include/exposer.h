@@ -32,6 +32,8 @@
 
 #include "prometheus/registry.h"
 
+typedef struct sockaddr_storage sockaddr_t;
+
 namespace ganesha_monitoring
 {
 
@@ -42,7 +44,7 @@ class Exposer {
 	explicit Exposer(prometheus::Registry &registry);
 	~Exposer();
 
-	void start(uint16_t port);
+	void start(const sockaddr_t *addr, uint16_t port);
 	void stop(void);
 
     private:

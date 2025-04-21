@@ -264,7 +264,7 @@ typedef struct nfs_core_param {
 	 */
 	struct glist_head haproxy_hosts;
 	/** The IPv4 or IPv6 address to which to bind for our
-	    listening port.  Set by the Bind_Addr option.
+	    listening port. Set by the Bind_Addr option.
 	    Must be 8-byte aligned (see sockaddr_t). */
 	sockaddr_t bind_addr;
 	/** An array of port numbers, one for each protocol.  Set by
@@ -524,6 +524,9 @@ typedef struct nfs_core_param {
 	*/
 	uint32_t malloc_trim_minthreshold;
 #ifdef USE_MONITORING
+	/** Monitoring IP address. Monitoring service will listen on
+	 * <monitoring_addr>:<monitoring_port> */
+	sockaddr_t monitoring_addr;
 	/** Monitoring port number. */
 	uint16_t monitoring_port;
 	/** Enable creating metrics labels on the fly based on client-ip,
