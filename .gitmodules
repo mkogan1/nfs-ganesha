@@ -4,3 +4,7 @@
 [submodule "src/monitoring/prometheus-cpp-lite"]
 	path = src/monitoring/prometheus-cpp-lite
 	url = https://github.com/biaks/prometheus-cpp-lite.git
+[submodule "src/libkmip"]
+	path = src/libkmip
+	url = https://github.com/ceph/libkmip
+	branch = ceph-main
