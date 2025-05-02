@@ -2126,7 +2126,7 @@ void ceph_write2_cb(struct ceph_ll_io_info *cb_info)
 			 cb_info->result, cb_info);
 	}
 
-	if (cbi->my_fd->fsal_fd.close_on_complete) {
+	if (cbi->async && cbi->my_fd->fsal_fd.close_on_complete) {
 		/* We need to ask to resume so we can complete I/O not on the
 		 * call back thread since we have to call close.
 		 */
@@ -2200,11 +2200,10 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 #if USE_FSAL_CEPH_FS_NONBLOCKING_IO
 	struct ceph_fsal_cb_info *cbi;
 	int64_t result;
-#else
+#endif
 	ssize_t nb_written;
 	struct ceph_fd temp_fd = { FSAL_FD_INIT, NULL };
 	int i, retval = 0;
-#endif
 
 #if USE_FSAL_CEPH_FS_NONBLOCKING_IO
 	if (write_arg->fsal_resume) {
@@ -2220,15 +2219,20 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 
 	/* Indicate a desire to start io and get a usable file descritor */
 #if USE_FSAL_CEPH_FS_NONBLOCKING_IO
-	status = fsal_start_io(&out_fd, obj_hdl, &myself->fd.fsal_fd,
-			       &cbi->temp_fd.fsal_fd, write_arg->state,
-			       FSAL_O_WRITE, false, NULL, bypass,
-			       &myself->share);
+	if (CephFSM.async || CephFSM.zerocopy) {
+		status = fsal_start_io(&out_fd, obj_hdl, &myself->fd.fsal_fd,
+				       &cbi->temp_fd.fsal_fd, write_arg->state,
+				       FSAL_O_WRITE, false, NULL, bypass,
+				       &myself->share);
+	} else {
 #else
-	status = fsal_start_io(&out_fd, obj_hdl, &myself->fd.fsal_fd,
-			       &temp_fd.fsal_fd, write_arg->state, FSAL_O_WRITE,
-			       false, NULL, bypass, &myself->share);
+	{
 #endif
+		status = fsal_start_io(&out_fd, obj_hdl, &myself->fd.fsal_fd,
+				       &temp_fd.fsal_fd, write_arg->state,
+				       FSAL_O_WRITE, false, NULL, bypass,
+				       &myself->share);
+	}
 
 	if (FSAL_IS_ERROR(status)) {
 		LogFullDebug(COMPONENT_FSAL,
@@ -2240,6 +2244,14 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	my_fd = container_of(out_fd, struct ceph_fd, fsal_fd);
 
 #if USE_FSAL_CEPH_FS_NONBLOCKING_IO
+#ifdef USE_FSAL_CEPH_FS_ZEROCOPY_IO
+	if (!CephFSM.async && !CephFSM.zerocopy)
+		goto old_style;
+#else
+	if (!CephFSM.async)
+		goto old_style;
+#endif
+
 	cbi->io_info.callback = ceph_write2_cb;
 	cbi->io_info.priv = cbi;
 	cbi->io_info.fh = my_fd->fd;
@@ -2256,7 +2268,20 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	cbi->obj_hdl = obj_hdl;
 	cbi->done_cb = done_cb;
 	cbi->caller_arg = caller_arg;
+	cbi->async = CephFSM.async;
 	write_arg->cbi = cbi;
+
+#ifdef USE_FSAL_CEPH_FS_ZEROCOPY_IO
+
+	cbi->io_info.zerocopy = CephFSM.zerocopy;
+	cbi->zerocopy = cbi->io_info.zerocopy;
+
+	if (!CephFSM.async) {
+		/* Do zerocopy non-async I/O */
+		ceph_ll_readv_writev(export->cmount, &cbi->io_info);
+		return;
+	}
+#endif
 
 	/* Note that while we are passing an export to the callback, the
 	 * protocol request that drove this I/O can not complete until the
@@ -2290,6 +2315,17 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	LogEvent(COMPONENT_FSAL,
 		 "CDBG: Processing write offset %" PRIu64 " length %" PRIu64,
 		 offset, (uint64_t) write_arg->io_request);
+
+
+	GSH_UNIQUE_AUTO_TRACEPOINT(fsal_ceph, ceph_read, TRACE_DEBUG,
+				   "Write. fileid: {}, result: {}",
+				   obj_hdl->fileid, result);
+
+	goto out;
+
+old_style:
+
+#endif
 
 	for (i = 0; i < write_arg->iov_count; i++) {
 		LogEvent(COMPONENT_FSAL,
@@ -2332,12 +2368,8 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	GSH_UNIQUE_AUTO_TRACEPOINT(fsal_ceph, ceph_write, TRACE_DEBUG,
 				   "Write. fileid: {}, nb_written: {}",
 				   obj_hdl->fileid, nb_written);
-#endif
 
-#if USE_FSAL_CEPH_FS_NONBLOCKING_IO
-#else
 out:
-#endif
 
 	status2 = fsal_complete_io(obj_hdl, out_fd);
 
