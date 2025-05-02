@@ -36,13 +36,14 @@
 
 static pthread_rwlock_t url_rwlock;
 static struct glist_head url_providers;
-static struct glist_head config_plugins;
+static struct glist_head plugin_modules;
+static struct glist_head config_providers;
 static regex_t url_regex;
 
-struct gsh_config_plugin {
+struct gsh_plugin_module {
 	struct glist_head link;
 	const char *name;
-	void *handle;
+	void *handle;	// shared object reference
 };
 
 /** @brief register handler for new url type
@@ -125,7 +126,8 @@ static void load_rados_config(void)
 void config_url_init(void)
 {
 	glist_init(&url_providers);
-	glist_init(&config_plugins);
+	glist_init(&config_providers);
+	glist_init(&plugin_modules);
 	PTHREAD_RWLOCK_init(&url_rwlock, NULL);
 
 /* init well-known URL providers */
@@ -144,7 +146,7 @@ void config_url_init(void)
 void config_url_shutdown(void)
 {
 	struct gsh_url_provider *url_p;
-	struct gsh_config_plugin *plugin_p;
+	struct gsh_plugin_module *plugin_p;
 	void *handle;
 
 	PTHREAD_RWLOCK_wrlock(&url_rwlock);
@@ -154,8 +156,8 @@ void config_url_shutdown(void)
 		url_p->url_shutdown();
 	}
 
-	while ((plugin_p = glist_first_entry(&config_plugins,
-			struct gsh_config_plugin, link))) {
+	while ((plugin_p = glist_first_entry(&plugin_modules,
+			struct gsh_plugin_module, link))) {
 		handle = plugin_p->handle;
 		glist_del(&plugin_p->link);
 		gsh_free(plugin_p);
@@ -180,7 +182,7 @@ int config_plugin_load(char *filename)
 	void *handle;
 	char *fn;
 	int rc = ENXIO;
-	struct gsh_config_plugin *plugin_p;
+	struct gsh_plugin_module *plugin_p;
 	plugin_p = gsh_malloc(sizeof *plugin_p);
 	fn = gsh_strdup(filename);
 	memset(plugin_p, 0, sizeof *plugin_p);
@@ -191,7 +193,7 @@ int config_plugin_load(char *filename)
 	}
 	plugin_p->name = fn;
 	plugin_p->handle = handle;
-	glist_add_tail(&config_plugins, &plugin_p->link);
+	glist_add_tail(&plugin_modules, &plugin_p->link);
 	plugin_p = 0;
 	fn = 0;
 	rc = 0;
@@ -302,4 +304,69 @@ void config_url_release(FILE *f, char *fbuf)
 {
 	fclose(f);
 	free(fbuf);
+}
+
+/** @brief register handler for config handler in module
+ */
+int register_config_locked(struct gsh_config_provider *config_p)
+{
+	int code = 0;
+	glist_add_tail(&config_providers, &config_p->link);
+	return code;
+}
+
+/** @brief register handler for config handler not in module
+ */
+int register_config(struct gsh_config_provider *config_p)
+{
+	int code = 0;
+
+	PTHREAD_RWLOCK_wrlock(&url_rwlock);
+	code = register_config_locked(config_p);
+
+	PTHREAD_RWLOCK_unlock(&url_rwlock);
+	return code;
+}
+
+
+/** @brief unregister plugin for config handler in module
+ */
+int unregister_config_locked(struct gsh_config_provider *config_p)
+{
+	PTHREAD_RWLOCK_wrlock(&url_rwlock);
+	glist_del(&config_p->link);
+	PTHREAD_RWLOCK_unlock(&url_rwlock);
+	return 0;
+}
+
+
+/** @brief unregister plugin for config handler not in module
+ */
+int unregister_config(struct gsh_config_provider *config_p)
+{
+	PTHREAD_RWLOCK_wrlock(&url_rwlock);
+	glist_del(&config_p->link);
+	PTHREAD_RWLOCK_unlock(&url_rwlock);
+	return 0;
+}
+
+int read_plugin_config(config_file_t in_config, struct config_error_type *err_type)
+{
+	struct gsh_config_provider *config_p;
+	struct glist_head *gl;
+	int code = 0;
+
+	PTHREAD_RWLOCK_wrlock(&url_rwlock);
+	glist_for_each(gl, &config_providers)
+	{
+		config_p = glist_entry(gl, struct gsh_config_provider, link);
+		code = config_p->init_block(in_config, err_type);
+		if (!config_error_is_harmless(err_type)) {
+			code = -1;
+			goto Done;
+		}
+	}
+Done:
+	PTHREAD_RWLOCK_unlock(&url_rwlock);
+	return code;
 }
