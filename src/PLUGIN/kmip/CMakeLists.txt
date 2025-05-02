@@ -26,7 +26,7 @@ add_definitions(
 
 set(plugin_kmip_SRCS
   ${plugin_kmip_SRCS}
-  kmip_fscript.c
+  kmip_fscrypt.c
   )
 add_library(kmip_fscrypt MODULE ${plugin_kmip_SRCS})
 add_sanitizers(kmip_fscrypt)
@@ -38,4 +38,4 @@ target_link_libraries(kmip_fscrypt
 # include_directories(${RADOS_INCLUDE_DIR})
 set_target_properties(kmip_fscrypt PROPERTIES SOVERSION
   "${GANESHA_MAJOR_VERSION}${GANESHA_MINOR_VERSION}")
-install(TARGETS kmip_fscrypt LIBRARY DESTINATION ${LIB_INSTALL_DIR})
+install(TARGETS kmip_fscrypt LIBRARY COMPONENT plugin DESTINATION ${FSAL_DESTINATION})
