@@ -116,6 +116,16 @@ static int ceph_conf_commit(void *node, void *link_mem, void *self_struct,
 		return 1;
 	}
 
+#ifdef USE_FSAL_CEPH_FS_ZEROCOPY_IO
+	if (!CephFSM->zerocopy) {
+		LogInfo(COMPONENT_FSAL, "Disabling zerocopy");
+		/* We need to let upper layer know it should allocate
+		 * read buffer when zerocopy is not enabled.
+		 */
+		CephFSM->fsal.fs_info.allocate_own_read_buffer = false;
+	}
+#endif
+
 	return 0;
 }
 
@@ -124,8 +134,8 @@ static struct config_item ceph_items[] = {
 		       conf_path),
 	CONF_ITEM_MODE("umask", 0, ceph_fsal_module, fsal.fs_info.umask),
 	CONF_ITEM_BOOL("client_oc", false, ceph_fsal_module, client_oc),
-	CONF_ITEM_BOOL("async", false, ceph_fsal_module, async),
-	CONF_ITEM_BOOL("zerocopy", false, ceph_fsal_module, zerocopy),
+	CONF_ITEM_BOOL("async", true, ceph_fsal_module, async),
+	CONF_ITEM_BOOL("zerocopy", true, ceph_fsal_module, zerocopy),
 	CONFIG_EOL
 };
 
