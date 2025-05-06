@@ -1031,6 +1031,19 @@ static fsal_status_t file_io_advise(struct fsal_obj_handle *obj_hdl,
 
 /* file_close
  * default case not supported
+ *	.. log at debug because in some configurations this
+ *	error can be "normal" (ie, kmip_fscrypt with ceph + vfs).
+ */
+
+static fsal_status_t file_control(struct fsal_obj_handle *obj_hdl,
+				  int operation, void *data)
+{
+	LogDebug(COMPONENT_FSAL, "Invoking unsupported FSAL operation");
+	return fsalstat(ERR_FSAL_NOTSUPP, ENOTSUP);
+}
+
+/* file_close
+ * default case not supported
  */
 
 static fsal_status_t file_close(struct fsal_obj_handle *obj_hdl)
@@ -1473,6 +1486,7 @@ struct fsal_obj_ops def_handle_ops = {
 	.rename = renamefile,
 	.unlink = file_unlink,
 	.io_advise = file_io_advise,
+	.control = file_control,
 	.fallocate = file_fallocate,
 	.close = file_close,
 	.list_ext_attrs = list_ext_attrs,
