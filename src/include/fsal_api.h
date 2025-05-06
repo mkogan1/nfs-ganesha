@@ -2095,6 +2095,21 @@ struct fsal_obj_ops {
 	fsal_status_t (*fallocate)(struct fsal_obj_handle *obj_hdl,
 				   struct state_t *state, uint64_t offset,
 				   uint64_t length, bool allocate);
+
+	/**
+ * @brief Function to issue a miscellaneous operation (such as fscrypt setkey)
+ *
+ * @param[in]  obj_hdl     File on which to operate
+ * @param[in]  operation   What to do
+ * @param[in|out]  void *  op specific data.
+ *
+ * @return FSAL status.
+ */
+
+	fsal_status_t (*control)(struct fsal_obj_handle *obj_hdl,
+				     int operation,
+				     void *data);
+
 	/**@}*/
 
 	/**@{*/
