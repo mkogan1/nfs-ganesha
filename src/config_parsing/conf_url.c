@@ -25,6 +25,7 @@
 #include <dlfcn.h>
 #include "log.h"
 #include "sal_functions.h"
+#include "gsh_config.h"
 
 #include "conf_url.h"
 
@@ -175,16 +176,51 @@ void config_url_shutdown(void)
 	PTHREAD_RWLOCK_destroy(&url_rwlock);
 }
 
+static const char pathfmt[] = "%s/lib%s.so";
+
 /** @brief map plugin into memory and remember it
  */
 int config_plugin_load(char *filename)
 {
 	void *handle;
-	char *fn;
+	char *fn, *cp;
+	size_t size;
+	int old_form;
 	int rc = ENXIO;
 	struct gsh_plugin_module *plugin_p;
 	plugin_p = gsh_malloc(sizeof *plugin_p);
-	fn = gsh_strdup(filename);
+	char *modules_loc;
+
+	modules_loc = nfs_param.core_param.ganesha_modules_loc;
+	if (!modules_loc) {	// because we are called earlier...
+		modules_loc = FSAL_MODULE_LOC;
+	}
+
+	// prelimiary doc: filename of the form:
+	// ganesha/libkmip_fscrypt.so
+	// but the "ganesha standard form" should be just "kmip_fscrypt",
+	// so, handle both...
+	old_form = 0;
+	if (!memcmp(filename, "ganesha/lib", 11))	// uses magic offsets
+	{
+		filename += 11; 	// skip leading "ganesha/lib"
+		old_form = 1;
+	}
+	size = sizeof pathfmt + strlen(modules_loc) + strlen(filename);
+	fn = gsh_malloc(size);
+	snprintf(fn, size, pathfmt, modules_loc, filename);
+	if (!old_form) {
+	} else {
+		cp = strrchr(fn, '.');
+		if (cp && cp > fn+3) {
+			cp = strrchr(fn, '.');
+			cp -= 3;
+			if (!strcmp(cp, ".so.so")) {
+				cp[3] = 0;	// trim redundant trailing ".so"
+			}
+		}
+	}
+
 	memset(plugin_p, 0, sizeof *plugin_p);
 	PTHREAD_RWLOCK_wrlock(&url_rwlock);
 	handle = dlopen(fn, MY_RTLD_FLAGS);
