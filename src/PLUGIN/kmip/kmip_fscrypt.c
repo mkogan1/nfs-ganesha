@@ -35,6 +35,10 @@
 #include "abstract_mem.h"
 #include "config_parsing.h"
 #include "conf_url.h"
+#include "nfs_exports.h"
+#include "kmip.h"
+#include "kmip_bio.h"
+#include "kmip_memset.h"
 
 struct kmip_host_param {
 	struct glist_head link;
@@ -50,10 +54,20 @@ struct kmip_params {
 	struct glist_head kmip_host;
 };
 
+struct export_kmip {
+	char *kmip_key_id;
+	uint16_t export_id;
+};
+
 struct kmip_params kmip_settings;
 
 void *kmip_host_init(void *, void *);
 int kmip_host_commit(void *, void *, void *, struct config_error_type *);
+int kmip_load_export_extension(struct export_extension *,
+		config_file_t, struct config_error_type *);
+int kmip_root_cb_func(struct exp_root_callback *,
+	struct fsal_obj_handle *obj);
+int kmip_root_cb_free(struct exp_root_callback *);
 
 // XXX how to do more than one host?
 static struct config_item kmip_host_params[] = {
@@ -90,6 +104,48 @@ struct config_block kmip_block = {
 	.blk_desc.u.blk.init = noop_conf_init,
 	.blk_desc.u.blk.params = kmip_params,
 	.blk_desc.u.blk.commit = noop_conf_commit
+};
+
+static struct config_item kmip_export_params[] = {
+	CONF_ITEM_STR("kmip_key_id", 0, 512, NULL, export_kmip,
+		kmip_key_id),
+	CONF_MAND_UI16("Export_id", 0, UINT16_MAX, 1, export_kmip, export_id),    \
+
+	CONFIG_EOL
+};
+
+int kmip_export_extension_commit(void *, void *, void *, struct config_error_type*);
+
+struct config_block kmip_export_extensions = {
+	.dbus_interface_name = "org.ganesha.nfsd.config.kmip.%d",
+	.blk_desc.name = "EXPORT",
+	.blk_desc.flags = CONFIG_RELAX,
+	.blk_desc.type = CONFIG_BLOCK,
+	.blk_desc.u.blk.init = noop_conf_init,
+	.blk_desc.u.blk.params = kmip_export_params,
+	.blk_desc.u.blk.commit = kmip_export_extension_commit
+};
+
+struct export_extension_sw kmip_extension_sw = {
+	kmip_load_export_extension
+};
+
+struct kmip_export_extension {
+	struct export_extension extension;
+} kmip_export_extension_st = {
+	.extension = {
+		.sw = &kmip_extension_sw
+	}
+};
+
+struct exp_root_callback_sw kmip_root_callback_sw = {
+	kmip_root_cb_func,
+	kmip_root_cb_free
+};
+
+struct kmip_callback {
+	struct exp_root_callback callback;
+	char *kmip_key_id;
 };
 
 void free_host_params()
@@ -134,7 +190,7 @@ int kmip_host_commit(void *node, void *link_mem, void *self_struct,
 	return 0;
 }
 
-int init_block(config_file_t config_struct,
+int kmip_init_block(config_file_t config_struct,
 				 struct config_error_type *err_type)
 {
 	int rc;
@@ -158,20 +214,82 @@ int init_block(config_file_t config_struct,
 	return rc;
 }
 
+int load_kmip_export_extensions(config_file_t in_config,
+				struct config_error_type *err_type)
+{
+	int rc;
+	struct export_kmip st[1];
+	memset(st, 0, sizeof *st);
+	rc = load_config_from_parse(in_config,
+		&kmip_export_extensions, st, false, err_type);
+
+	return rc;
+}
+
+// XXX kill this...
+void dummy_routine_to_prove_i_can_link_to_libkmip()
+{
+KMIP *a = 0;
+BIO *b = 0;
+char *c = 0;
+int d = 0;
+char **e = 0;
+int *f = 0;
+int g;
+g = kmip_bio_send_request_encoding(a,b,c,d,e,f);
+printf ("g = %d\n", g);
+}
+
 struct kmip_plugin_module {
 	struct gsh_config_provider config;
 };
 
 struct kmip_plugin_module kmip_plugin_static_t = {
 	.config = {
-		.init_block = init_block,
+		.init_block = kmip_init_block,
 	}
 };
 
 /**
+ * @brief Associate kmip_key_id with export
+ */
+
+int kmip_export_extension_commit(void *node, void *link_mem, void *self_struct,
+	struct config_error_type *err_type)
+{
+	struct kmip_callback *cb;
+	struct export_kmip *st = self_struct;
+	struct gsh_export *exp;
+	int err_count = 0;
+	exp = get_gsh_export(st->export_id);
+	if (!exp) {
+		 LogCrit(COMPONENT_CONFIG, "Export %d does not exist",
+                         st->export_id);
+		return ++err_count;
+	}
+	cb = gsh_calloc(1, sizeof *cb);
+	cb->kmip_key_id = gsh_strdup(st->kmip_key_id);
+	add_to_export_callbacks(exp, &kmip_root_callback_sw, &cb->callback);
+	put_gsh_export_config(exp);
+	return 0;
+}
+
+int kmip_load_export_extension(struct export_extension *ex,
+config_file_t in_config, struct config_error_type *err_type)
+{
+	int rc;
+	struct export_kmip st[1];
+ __attribute__((unused))        // don't need for now; optimizer will delete
+	struct kmip_export_extension *extension_st;
+	extension_st = container_of(ex, struct kmip_export_extension, extension);
+	memset(st, 0, sizeof *st);
+	rc = load_config_from_parse(in_config,
+		&kmip_export_extensions, st, false, err_type);
+	return rc;
+}
+
+/**
  * @brief Initialize kmip plugin
- *
- * To do: register config options.
  */
 
 MODULE_INIT void init(void)
@@ -180,19 +298,83 @@ MODULE_INIT void init(void)
 	if (register_config_locked(&kmip_plugin_static_t.config) != 0) {
 		LogCrit(COMPONENT_FSAL, "Failed to register kmip plugin.");
 	}
+	add_export_extension(&kmip_export_extension_st.extension);
 }
 
 /**
  * @brief Release kmip plugin
- *
- * To do: de-register config options.
  */
 
 MODULE_FINI void finish(void)
 {
 	LogDebug(COMPONENT_FSAL, "kmip unload");
 
+	remove_export_extension(&kmip_export_extension_st.extension);
 	free_host_params();
 	if (unregister_config_locked(&kmip_plugin_static_t.config) != 0)
 		fprintf(stderr, "KMIP module failed to unregister");
+}
+
+int kmip_root_cb_func(struct exp_root_callback *cb,
+	struct fsal_obj_handle *obj)
+{
+	struct kmip_callback *data = container_of(cb, struct kmip_callback, callback);
+	struct gsh_export *export = cb->export;
+	fsal_status_t status;
+	int rc = 0;
+	char *cp;	// XXX temp kill
+	unsigned char *up, *tp, *ep;	// XXX temp kill
+
+struct {
+	uint64_t data[8];
+} dummy_key = {
+.data = {
+0x7d9a63c09eefd3aa,
+0x416e43558f09444a,
+0xfa6b8492fb432604,
+0x9942c6f001df5b31,
+0xf22c42b11fc3657b,
+0x6eb0f9fa5603c7d2,
+0x515db02cab0333f3,
+0xbb4142bc42ed8f6d
+} };
+
+	if (!data->kmip_key_id) {
+		LogCrit(COMPONENT_FSAL, "keyset callback: export = %d, obj = %p; no kmip_key_id",
+			export->export_id, obj);
+		return 0;
+	}
+
+	// XXX KMIP CALL GOES HERE
+
+	up = (unsigned char *) (dummy_key.data);	// XXX temp kill
+	ep = up + sizeof dummy_key.data;	// XXX temp kill
+	tp = up;	// XXX temp kill
+	for (cp = data->kmip_key_id; *cp; ++cp) {	// XXX temp kill
+		*tp ^= *cp;	// XXX temp kill
+		++tp;	// XXX temp kill
+		if (tp >= ep) tp = up;	// XXX temp kill
+	}	// XXX temp kill
+
+	LogCrit(COMPONENT_FSAL, "keyset callback: kmip_key_id = %s, export = %d, obj = %p",
+		data->kmip_key_id, export->export_id, obj);
+	status = obj->obj_ops->control(obj, FSCRYPT_SETKEY, &dummy_key);
+
+	if (!FSAL_IS_SUCCESS(status)) {
+		LogCrit(COMPONENT_FSAL, "keyset failed: kmip_key_id = %s, export = %d, error = %d/%d",
+			data->kmip_key_id, export->export_id, status.major, status.minor);
+		rc = EINVAL;
+	}
+
+	kmip_root_cb_free(cb);
+	return rc;
+}
+
+int kmip_root_cb_free(struct exp_root_callback *cb)
+{
+	struct kmip_callback *data = container_of(cb, struct kmip_callback, callback);
+
+	gsh_free(data->kmip_key_id);
+	gsh_free(data);
+	return 0;
 }
