@@ -1,5 +1,7 @@
 { global:
   ace_count;
+  add_export_extension;
+  add_to_export_callbacks;
   admin_halt;
   admin_shutdown;
   avltree_do_insert;
@@ -242,6 +244,7 @@
   ReturnLevelAscii;
   read_plugin_config;
   re_index_fs_fsid;
+  remove_export_extension;
   root_op_export_set;
   root_op_export_options;
   set_common_verifier;

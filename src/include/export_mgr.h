@@ -150,6 +150,8 @@ struct gsh_export {
 	struct glist_head mounted_exports_list;
 	/** This export is a node in the list of mounted_exports */
 	struct glist_head mounted_exports_node;
+	/** List of callbacks to made made once the root is set */
+	struct glist_head exp_root_callbacks;
 	/** Entry for the root of this export, protected by lock */
 	struct fsal_obj_handle *exp_root_obj;
 	/** CFG config_generation that last touched this export */
@@ -383,5 +385,43 @@ void remove_all_exports(void);
 
 extern struct timespec nfs_stats_time;
 void nfs_init_stats_time(void);
+
+struct exp_root_callback_sw;
+/**
+ * @brief Structure to hold one element in a list of callbacks to be
+ *        called after the root is set in the export.
+ */
+struct exp_root_callback {
+	struct glist_head link;
+	struct exp_root_callback_sw *sw;
+#ifndef __cplusplus
+	struct gsh_export *export;
+#else
+	struct gsh_export *export_;
+#endif
+};
+struct exp_root_callback_sw {
+	int (*cb)(struct exp_root_callback *, struct fsal_obj_handle *obj);
+	int (*free)(struct exp_root_callback *);
+};
+void add_to_export_callbacks(struct gsh_export *,
+	struct exp_root_callback_sw *, struct exp_root_callback *);
+
+struct export_extension_sw;
+/**
+ * @brief Structure to hold a routine to find export extensions.
+ */
+struct export_extension {
+	struct glist_head link;
+	struct export_extension_sw *sw;
+};
+struct export_extension_sw {
+	int (*load)(struct export_extension *,
+		config_file_t in_config, struct config_error_type *err_type);
+};
+
+void add_export_extension(struct export_extension *);
+void remove_export_extension(struct export_extension *);
+int load_export_extensions(config_file_t, struct config_error_type *);
 #endif /* !EXPORT_MGR_H */
 /** @} */
