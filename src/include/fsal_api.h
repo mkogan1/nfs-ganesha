@@ -388,6 +388,9 @@ struct fsal_dsh_ops;
 #define SEEK_HOLE 4
 #endif
 
+// control oeprations
+#define FSCRYPT_SETKEY ((((int)'f')<<24)+1)
+
 struct io_info {
 	contents io_content;
 	uint32_t io_advise;
