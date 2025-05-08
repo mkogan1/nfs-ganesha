@@ -36,6 +36,11 @@ target_link_libraries(kmip_fscrypt
   ${RADOS_LIBRARIES}
   ${LDFLAG_DISALLOW_UNDEF})
 # include_directories(${RADOS_INCLUDE_DIR})
+
+target_include_directories(kmip_fscrypt PRIVATE "${CMAKE_SOURCE_DIR}/libkmip")
+target_link_libraries(kmip_fscrypt PRIVATE kmip
+    OpenSSL::SSL OpenSSL::Crypto)
+
 set_target_properties(kmip_fscrypt PROPERTIES SOVERSION
   "${GANESHA_MAJOR_VERSION}${GANESHA_MINOR_VERSION}")
 install(TARGETS kmip_fscrypt LIBRARY COMPONENT plugin DESTINATION ${FSAL_DESTINATION})
