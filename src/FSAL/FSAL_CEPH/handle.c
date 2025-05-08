@@ -3123,6 +3123,19 @@ static void ceph_fsal_handle_to_key(struct fsal_obj_handle *handle_pub,
 	fh_desc->len = sizeof(handle->key);
 }
 
+static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
+				       int operation, void *data)
+{
+	unsigned long long *x = data;
+	fsal_status_t status;
+LogCrit(COMPONENT_FSAL,
+"ceph_fsal_control op=%d data=%#llx,%#llx,%#llx,%#llx", operation,
+x[0], x[1], x[3], x[3]);
+//	status = fsalstat(ERR_FSAL_NOTSUPP, ENOTSUP);
+	status = fsalstat(ERR_FSAL_NO_ERROR, 0);
+	return status;
+}
+
 #ifdef USE_CEPH_LL_FALLOCATE
 static fsal_status_t ceph_fsal_fallocate(struct fsal_obj_handle *obj_hdl,
 					 state_t *state, uint64_t offset,
@@ -3450,6 +3463,7 @@ void handle_ops_init(struct fsal_obj_ops *ops)
 #ifdef CEPH_PNFS
 	handle_ops_pnfs(ops);
 #endif /* CEPH_PNFS */
+	ops->control = ceph_fsal_control;
 #ifdef USE_CEPH_LL_FALLOCATE
 	ops->fallocate = ceph_fsal_fallocate;
 #endif
