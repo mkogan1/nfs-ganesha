@@ -2114,14 +2114,16 @@ void ceph_write2_cb(struct ceph_ll_io_info *cb_info)
 	if (cb_info->result < 0) {
 		/* An error occurred. */
 		status = ceph2fsal_error(cb_info->result);
-		LogFullDebug(COMPONENT_FSAL, "Write returned %s",
-			     msg_fsal_err(status.major));
+		LogEvent(COMPONENT_FSAL,
+			 "CDBG: Write returned %s, ceph_ll_io_info %p",
+			 msg_fsal_err(status.major), cb_info);
 	} else {
 		/* I/O completed. */
 		write_arg->io_amount = cb_info->result;
 
-		LogFullDebug(COMPONENT_FSAL, "Write returned %" PRIu64,
-			     cb_info->result);
+		LogEvent(COMPONENT_FSAL,
+			 "CDBG: Write returned %" PRIu64 "ceph_ll_io_info %p",
+			 cb_info->result, cb_info);
 	}
 
 	if (cbi->my_fd->fsal_fd.close_on_complete) {
@@ -2262,8 +2264,9 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	 * export reference is still valid until the callback completes.
 	 */
 
-	LogFullDebug(COMPONENT_FSAL,
-		     "Calling ceph_ll_nonblocking_readv_writev for write");
+	LogEvent(COMPONENT_FSAL,
+		 "CDBG: Calling ceph_ll_nonblocking_readv_writev for write ceph_ll_ioinfo %p offset %" PRIu64 " length %" PRIu64,
+		 &cbi->io_info, offset, (uint64_t) write_arg->io_request);
 
 	result =
 		ceph_ll_nonblocking_readv_writev(export->cmount, &cbi->io_info);
@@ -2284,21 +2287,37 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		write_arg->io_amount = result;
 	}
 #else
+	LogEvent(COMPONENT_FSAL,
+		 "CDBG: Processing write offset %" PRIu64 " length %" PRIu64
+		 offset, (uint64_t) write_arg->io_request);
+
 	for (i = 0; i < write_arg->iov_count; i++) {
+		LogEvent(COMPONENT_FSAL,
+			 "CDBG: Calling ceph_ll_write iov %d %p offset %" PRIu64 " length %" PRIu64
+			 i, write_arg->iov[i].iov_len, write_arg->iov[i].iov_base);
+
 		nb_written = ceph_ll_write(export->cmount, my_fd->fd, offset,
 					   write_arg->iov[i].iov_len,
 					   write_arg->iov[i].iov_base);
 
 		if (nb_written == 0) {
+			LogEvent(COMPONENT_FSAL, "CDBG: nb_written %" PRIu64,
+				 (uint64_t) nb_written);
 			break;
 		} else if (nb_written < 0) {
 			status = ceph2fsal_error(nb_written);
 			goto out;
 		}
 
+		LogEvent(COMPONENT_FSAL, "CDBG: iov %d nb_written %" PRIu64,
+			 i, (uint64_t) nb_written);
+
 		write_arg->io_amount += nb_written;
 		offset += nb_written;
 	}
+
+	LogEvent(COMPONENT_FSAL, "CDBG: io_amount %" PRIu64,
+		 i, (uint64_t) write_arg->io_amount);
 
 	if (write_arg->fsal_stable) {
 		retval = ceph_ll_fsync(export->cmount, my_fd->fd, false);
