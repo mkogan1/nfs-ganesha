@@ -39,6 +39,11 @@
 #include "kmip.h"
 #include "kmip_bio.h"
 #include "kmip_memset.h"
+#include <openssl/err.h>
+
+int protocol_version = KMIP_1_0;
+
+#define IDLE_TIMEOUT	13	/* reap idle connections after 13 s */
 
 struct kmip_host_param {
 	struct glist_head link;
@@ -162,6 +167,38 @@ void free_host_params()
         }
 }
 
+int kmip_count_hosts(struct kmip_params *params)
+{
+	struct glist_head *gl;
+	int r = 0;
+	glist_for_each(gl, &params->kmip_host)
+	{
+		++r;
+	}
+	return r;
+}
+
+struct kmip_host_param *kmip_nth_host(struct kmip_params *params, int n)
+{
+	struct glist_head *gl;
+	struct glist_head *host_list = &params->kmip_host;
+	struct kmip_host_param *host_p;
+	int i = 0;
+
+	if (glist_null(host_list)) {
+		return NULL;
+	}
+	glist_for_each(gl, host_list)
+	{
+		if (i == n) {
+			host_p = glist_entry(gl, struct kmip_host_param, link);
+			return host_p;
+		}
+		++i;
+	}
+	return NULL;
+}
+
 void *kmip_host_init(void *link_mem, void *self_struct)
 {
 	assert (link_mem || self_struct);
@@ -226,20 +263,6 @@ int load_kmip_export_extensions(config_file_t in_config,
 	return rc;
 }
 
-// XXX kill this...
-void dummy_routine_to_prove_i_can_link_to_libkmip()
-{
-KMIP *a = 0;
-BIO *b = 0;
-char *c = 0;
-int d = 0;
-char **e = 0;
-int *f = 0;
-int g;
-g = kmip_bio_send_request_encoding(a,b,c,d,e,f);
-printf ("g = %d\n", g);
-}
-
 struct kmip_plugin_module {
 	struct gsh_config_provider config;
 };
@@ -251,7 +274,7 @@ struct kmip_plugin_module kmip_plugin_static_t = {
 };
 
 /**
- * @brief Associate kmip_key_id with export
+ * @brief pass kmip_key_id to export root callback.
  */
 
 int kmip_export_extension_commit(void *node, void *link_mem, void *self_struct,
@@ -274,6 +297,10 @@ int kmip_export_extension_commit(void *node, void *link_mem, void *self_struct,
 	return 0;
 }
 
+/**
+ * @brief look for kmip_key_id in all EXPORT blocks.
+ */
+
 int kmip_load_export_extension(struct export_extension *ex,
 config_file_t in_config, struct config_error_type *err_type)
 {
@@ -289,12 +316,736 @@ config_file_t in_config, struct config_error_type *err_type)
 }
 
 /**
+ * @brief log any queued ssl errors
+ */
+
+void log_ssl_errors(void)
+{
+	BUF_MEM *bptr;
+	char *cp;
+	BIO *mem = BIO_new(BIO_s_mem());
+	ERR_print_errors(mem);
+	BIO_get_mem_ptr(mem, &bptr);
+	if (bptr->length) {
+		cp = bptr->data + bptr->length;
+		if (*--cp == '\n') {
+			*cp = 0;
+		}
+	}
+	LogCrit(COMPONENT_FSAL, "ssl error: <%s>", bptr->data);
+	BIO_free(mem);
+}
+
+/*
+ * @brief in case of error: log queued up line sources from libkmip.
+ */
+
+void
+log_kmip_stacked_errors(KMIP *ctx)
+{
+	ErrorFrame *ef;
+
+	if (!ctx) return;
+	for (ef = ctx->frame_index; ef >= ctx->errors; --ef)
+		if (!ef->line)
+			;
+		else LogCrit(COMPONENT_FSAL, "- %s @ line: %d",
+			ef->function, ef->line);
+}
+
+struct my_kmip_connection {
+	SSL_CTX *ctx;
+	SSL *ssl;
+	BIO *bio;
+	KMIP kmip_ctx[1];
+	TextString textstrings[2];
+	UsernamePasswordCredential upc[1];
+	Credential credential[1];
+	int need_to_free_kmip;
+	size_t buffer_blocks, buffer_block_size, buffer_total_size;
+	uint8 *encoding;
+	int idle;
+	struct timeval lastuse[1];
+};
+struct my_kmip_connection saved_kconn[1];
+pthread_mutex_t kmip_connection_lock;
+pthread_cond_t kmip_connection_wait;
+pthread_t kmip_reaper_thread;
+int kmip_shutting_down;
+int saved_kmip_host_index;
+#define NOT_CONNECTED(k) (!(k)->bio)
+#define BUSY(k) (!(k)->idle)
+
+/*
+ * @brief free any resources associated with a kmip connection
+ *
+ * @param[in] kconn    the connection to be cleared.
+ *
+ * @return 0
+ */
+
+int kmip_free_handle_stuff(struct my_kmip_connection *kconn)
+{
+	if (kconn->encoding) {
+		kmip_free_buffer(kconn->kmip_ctx,
+			kconn->encoding,
+			kconn->buffer_total_size);
+		kmip_set_buffer(kconn->kmip_ctx, NULL, 0);
+		kconn->encoding = 0;
+	}
+	if (kconn->need_to_free_kmip) {
+		kmip_destroy(kconn->kmip_ctx);
+		kconn->need_to_free_kmip = 0;
+	}
+	if (kconn->bio) {
+		BIO_free_all(kconn->bio);
+		kconn->bio = 0;
+	}
+	if (kconn->ctx) {
+		SSL_CTX_free(kconn->ctx);
+		kconn->ctx = 0;
+	}
+	kconn->idle = 1;
+	return 0;
+}
+
+/*
+ * @brief retrieve an idle kmip handle.  It may or may not be connected.
+ *
+ * @return kconn  an idle connection.
+ */
+
+struct my_kmip_connection * get_kmip_handle(void)
+{
+	struct my_kmip_connection *kconn;
+	pthread_mutex_lock(&kmip_connection_lock);
+	for (;;) {
+		kconn = saved_kconn;
+		if (!kmip_shutting_down && !BUSY(kconn)) {
+			kconn->idle = 0;
+		} else {
+			kconn = 0;
+		}
+		if (kmip_shutting_down || kconn) break;
+		pthread_cond_wait(&kmip_connection_wait, &kmip_connection_lock);
+	}
+	pthread_mutex_unlock(&kmip_connection_lock);
+	return kconn;
+}
+
+/*
+ * @brief mark a connection available for reuse.
+ *
+ * The connection is left connected.  It will be cleared by
+ * the reaper thread if it is not needed again soon.
+ *
+ * @param[in] kconn     connectino to be released.
+ */
+
+void release_kmip_handle(struct my_kmip_connection *kconn)
+{
+	if (!kconn) return;
+	gettimeofday(kconn->lastuse, NULL);
+	kconn->idle = 1;
+	pthread_cond_broadcast(&kmip_connection_wait);
+}
+
+/*
+ * @brief wait for any pending kmip calls.
+ *
+ * @return 0 if there is a pending call.
+ * @return kconn an idle connectino.
+ */
+
+struct my_kmip_connection *timed_wait_kmip_busy(void)
+{
+	struct my_kmip_connection *kconn;
+	struct timespec now_ts[1];
+	clock_gettime(CLOCK_REALTIME, now_ts);
+	now_ts->tv_sec += IDLE_TIMEOUT*2;
+	pthread_mutex_lock(&kmip_connection_lock);
+	for (;;) {
+		kconn = saved_kconn;
+		if (!kmip_shutting_down && !BUSY(kconn)) {
+			kconn->idle = 0;
+		} else {
+			kconn = 0;
+		}
+		if (kconn) break;
+		if (pthread_cond_timedwait(&kmip_connection_wait,
+			&kmip_connection_lock,
+			now_ts) < 0) {
+LogCrit(COMPONENT_FSAL,"timed_wait_kmip_busy: connection hung - go boom now?");
+				break;
+			}
+	}
+	pthread_mutex_unlock(&kmip_connection_lock);
+	return kconn;
+}
+
+/*
+ * @brief connect to a named kmip host.
+ *
+ * @param[in] kconn holds all per-connection data.
+ * @param[in] host  the dns host name to which to connect.
+ * @param[in] portstring a string containing ascii digts of the port to connect to.
+ *
+ * @return 0 on success
+ * @return 1 on failure
+ */
+
+int setup_kmip_connect(struct my_kmip_connection *kconn, char *host, char *portstring)
+{
+	int r = 666;
+	int i;
+	size_t ns;
+	TextString *up;
+
+	// generic initialization
+
+	memset(kconn, 0, sizeof *kconn);
+	OPENSSL_init_ssl(0, NULL);
+	kconn->ctx = SSL_CTX_new(TLS_client_method());
+	if (!kmip_settings.kmip_cert)
+		;
+	else if (SSL_CTX_use_certificate_file(kconn->ctx, kmip_settings.kmip_cert, SSL_FILETYPE_PEM) != 1) {
+		LogCrit(COMPONENT_FSAL,"Can't load client cert from %s", kmip_settings.kmip_cert);
+		log_ssl_errors();
+		r = 1;
+		goto Done;
+	}
+	if (!kmip_settings.kmip_key)
+		;
+	else if (SSL_CTX_use_PrivateKey_file(kconn->ctx, kmip_settings.kmip_key, SSL_FILETYPE_PEM) != 1) {
+		LogCrit(COMPONENT_FSAL,"Can't load client key from %s", kmip_settings.kmip_key);
+		log_ssl_errors();
+		r = 1;
+		goto Done;
+	}
+	if (!kmip_settings.kmip_ca)
+		;
+	else if (SSL_CTX_load_verify_locations(kconn->ctx, kmip_settings.kmip_ca, NULL) != 1) {
+		LogCrit(COMPONENT_FSAL,"Can't load cacert %s", kmip_settings.kmip_ca);
+		log_ssl_errors();
+		r = 1;
+		goto Done;
+	}
+	SSL_CTX_set_verify(kconn->ctx, SSL_VERIFY_PEER, NULL);
+	kconn->bio = BIO_new_ssl_connect(kconn->ctx);
+	if (!kconn->bio) {
+		LogCrit(COMPONENT_FSAL,"BIO_new_ssl_connect failed");
+		log_ssl_errors();
+		r = 1;
+		goto Done;
+	}
+	BIO_get_ssl(kconn->bio, &kconn->ssl);
+	SSL_set_mode(kconn->ssl, SSL_MODE_AUTO_RETRY);
+
+	// connect to kmip host
+
+	BIO_set_conn_hostname(kconn->bio, host);
+	BIO_set_conn_port(kconn->bio, portstring);
+	if (BIO_do_connect(kconn->bio) != 1) {
+		LogCrit(COMPONENT_FSAL,"BIO_do_connect failed to %s %s", host, portstring);
+		log_ssl_errors();
+		r = 1;
+		goto Done;
+	}
+
+	// setup kmip
+
+	kmip_init(kconn->kmip_ctx, NULL, 0, protocol_version);
+	kconn->need_to_free_kmip = 1;
+	kconn->buffer_blocks = 1;
+	kconn->buffer_block_size = 1024;
+	kconn->encoding = kconn->kmip_ctx->calloc_func(kconn->kmip_ctx->state, kconn->buffer_blocks, kconn->buffer_block_size);
+	if (!kconn->encoding) {
+		LogCrit(COMPONENT_FSAL, "kmip buffer alloc failed: %ld * %ld",
+			kconn->buffer_blocks, kconn->buffer_block_size);
+		r = 1;
+		goto Done;
+	}
+	ns = kconn->buffer_blocks * kconn->buffer_block_size;
+	kmip_set_buffer(kconn->kmip_ctx, kconn->encoding, ns);
+	kconn->buffer_total_size = ns;
+
+	// add credential
+
+	up = kconn->textstrings;
+	if (kmip_settings.kmip_user) {
+		memset(kconn->upc, 0, sizeof *kconn->upc);
+		up->value = kmip_settings.kmip_user;
+		up->size = strlen(kmip_settings.kmip_user);
+		kconn->upc->username = up++;
+		if (kmip_settings.kmip_password) {
+			up->value = kmip_settings.kmip_password;
+			up->size = strlen(kmip_settings.kmip_password);
+			kconn->upc->password = up++;
+		}
+		kconn->credential->credential_type = KMIP_CRED_USERNAME_AND_PASSWORD;
+		kconn->credential->credential_value = kconn->upc;
+		i = kmip_add_credential(kconn->kmip_ctx, kconn->credential);
+		if (i != KMIP_OK) {
+			LogCrit(COMPONENT_FSAL,"failed to add credential to kmip");
+			r = 1;
+			goto Done;
+		}
+	}
+	r = 0;
+Done:
+	if (r) {
+		kmip_free_handle_stuff(kconn);
+	}
+	return r;
+}
+
+/**
+ * @brief return a connection to a kmip server.
+ *
+ * This routine will iterate through all HOST subblocks
+ * specified in the KMIP block, until it is able to
+ * complete a connection.  When reconnecting later,
+ * it will try to reconnect to that host first.
+ *
+ * @return kconn a connected kmip connection.
+ * @return 0 if there are no available kmip servers.
+ */
+
+struct my_kmip_connection * make_kmip_connect(void)
+{
+	struct my_kmip_connection *kconn;
+	int i, j, rc;
+	char *host;
+	char portstring[8];
+
+	kconn = get_kmip_handle();
+	rc = 1;
+	if (!kconn) {	// probably shutting down...
+	}
+	else if (NOT_CONNECTED(kconn)) {
+		int host_len = kmip_count_hosts(&kmip_settings);
+		j = saved_kmip_host_index;
+		for (i = 0; i < host_len; ++i, ++j) {
+			if (j >= host_len) j = 0;
+			struct kmip_host_param *host_p = kmip_nth_host(
+				&kmip_settings, j);
+			host = host_p->name;
+			snprintf(portstring, sizeof portstring, "%d",
+				host_p->port);
+			rc = setup_kmip_connect(kconn, host, portstring);
+			if (!rc) {
+				saved_kmip_host_index = j;
+				break;
+			}
+			LogCrit (COMPONENT_FSAL,
+				"kmip can't connect to %s:%s",
+				host, portstring);
+		}
+	}
+	if (rc && kconn) {
+		release_kmip_handle(kconn);
+		kconn = 0;
+	}
+	return kconn;
+}
+
+/**
+ * @brief fetch key contents from kmip
+ *
+ * @param[in] the key's unique id.
+ * @param[out] the returned key block data, in memory that should be freed.
+ * @param[out] length of the returned data.
+ *
+ * @return 0 on success
+ * @return 1 on failure
+ */
+
+int kmip_get_keyvalue(char *unique_id, unsigned char **value_out, size_t *value_size)
+{
+	struct my_kmip_connection *kconn;
+	int need_to_free_response = 0;
+	size_t ns;
+	int i, r;
+	char *response = NULL;
+	int response_size = 0;
+
+	kconn = make_kmip_connect();
+	if (!kconn) {
+		r = 1;
+		goto Done;
+	}
+	*value_out = 0;
+	*value_size = 0;
+
+	// build the request message
+
+	TextString uvalue[1];
+
+	if (unique_id) {
+		memset(uvalue, 0, sizeof *uvalue);
+		uvalue->value = unique_id;
+		uvalue->size = strlen(unique_id);
+	}
+
+	ProtocolVersion pv[1];
+	memset(pv, 0, sizeof *pv);
+	kmip_init_protocol_version(pv, kconn->kmip_ctx->version);
+
+	RequestHeader rh[1];
+	memset(rh, 0, sizeof *rh);
+	kmip_init_request_header(rh);
+	rh->protocol_version = pv;
+	rh->maximum_response_size = kconn->kmip_ctx->max_message_size;
+	rh->time_stamp = time(NULL);
+	rh->batch_count = 1;
+
+	GetRequestPayload get_req[1];
+	RequestBatchItem rbi[1];
+	memset(rbi, 0, sizeof *rbi);
+	kmip_init_request_batch_item(rbi);
+
+	memset(get_req, 0, sizeof *get_req);
+	if (unique_id)
+		get_req->unique_identifier = uvalue;;
+
+	rbi->operation = KMIP_OP_GET;
+	rbi->request_payload = get_req;
+
+	RequestMessage rm[1];
+	memset(rm, 0, sizeof *rm);
+	rm->request_header = rh;
+	rm->batch_items = rbi;
+	rm->batch_count = 1;
+
+	Authentication auth[1];
+	memset(auth, 0, sizeof *auth);
+	if (kconn->kmip_ctx->credential_list) {
+		LinkedListItem *item = kconn->kmip_ctx->credential_list->head;
+		if (item) {
+			auth->credential = (Credential *)item->data;
+			rh->authentication = auth;
+		}
+	}
+
+	for (;;) {
+		i = kmip_encode_request_message(kconn->kmip_ctx, rm);
+		if (i != KMIP_ERROR_BUFFER_FULL) break;
+		kmip_reset(kconn->kmip_ctx);
+		kconn->kmip_ctx->free_func(kconn->kmip_ctx->state, kconn->encoding);
+		kconn->encoding = 0;
+		++kconn->buffer_blocks;
+		kconn->encoding = kconn->kmip_ctx->calloc_func(kconn->kmip_ctx->state, kconn->buffer_blocks, kconn->buffer_block_size);
+		if (!kconn->encoding) {
+			LogCrit (COMPONENT_FSAL,"kmip buffer alloc failed: %ld * %ld",
+				kconn->buffer_blocks, kconn->buffer_block_size);
+			r = 1;
+			goto Done;
+		}
+		ns = kconn->buffer_blocks * kconn->buffer_block_size;
+		kmip_set_buffer(kconn->kmip_ctx, kconn->encoding, ns);
+		kconn->buffer_total_size = ns;
+	}
+	if (i != KMIP_OK) {
+		LogCrit(COMPONENT_FSAL,"Can't encode request: %d %s",
+			i, kconn->kmip_ctx->error_message);
+		log_kmip_stacked_errors(kconn->kmip_ctx);
+		r = 1;
+		goto Done;
+	}
+
+//		kmip_print_request_message(rm);
+
+	i = kmip_bio_send_request_encoding(kconn->kmip_ctx, kconn->bio,
+		(char*)kconn->encoding,
+		kconn->kmip_ctx->index - kconn->kmip_ctx->buffer,
+		&response, &response_size);
+	if (i < 0) {
+		LogCrit(COMPONENT_FSAL,"Problem sending request to create symmetric key: %d %s",
+			i, kconn->kmip_ctx->error_message);
+		log_kmip_stacked_errors(kconn->kmip_ctx);
+		r = 1;
+		goto Done;
+	}
+	kmip_free_buffer(kconn->kmip_ctx,
+		kconn->encoding,
+		kconn->buffer_total_size);
+	kconn->encoding = 0;
+	kmip_set_buffer(kconn->kmip_ctx, response, response_size);
+	ResponseMessage resp_m[1];
+	memset(resp_m, 0, sizeof *resp_m);
+	need_to_free_response = 1;
+	i = kmip_decode_response_message(kconn->kmip_ctx, resp_m);
+	if (i != KMIP_OK) {
+		LogCrit (COMPONENT_FSAL,"Failed to decode get response %d: %s",
+			i, kconn->kmip_ctx->error_message);
+		log_kmip_stacked_errors(kconn->kmip_ctx);
+		r = 1;
+		goto Done;
+	}
+//		kmip_print_response_message(resp_m);
+	ResponseBatchItem *req = resp_m->batch_items;
+	enum result_status rs = req->result_status;
+	if (rs != KMIP_STATUS_SUCCESS) {
+		LogCrit(COMPONENT_FSAL,"result is not success: %d", rs);
+		; // XXX do something here?
+	}
+	GetResponsePayload *pld = (GetResponsePayload *)req->response_payload;
+	if (pld) {
+switch (pld->object_type) {
+case KMIP_OBJTYPE_SYMMETRIC_KEY: {
+	KeyBlock *kp = ((SymmetricKey *)pld->object)->key_block;
+	ByteString *bp = 0;
+	switch (kp->key_value_type) {
+	case KMIP_TYPE_BYTE_STRING:
+		bp = kp->key_value;
+		break;
+	case KMIP_TYPE_STRUCTURE: {
+		KeyValue *kv = kp->key_value;
+		switch(kp->key_format_type) {
+case KMIP_KEYFORMAT_RAW: case KMIP_KEYFORMAT_OPAQUE:
+case KMIP_KEYFORMAT_PKCS1: case KMIP_KEYFORMAT_PKCS8:
+case KMIP_KEYFORMAT_X509: case KMIP_KEYFORMAT_EC_PRIVATE_KEY:
+		bp = kv->key_material;
+		break;
+	default:
+		LogCrit (COMPONENT_FSAL,
+			"unknown key material format type %d",
+			kp->key_format_type);
+		}
+		} break;
+	default:
+		LogCrit (COMPONENT_FSAL,
+			"undecipherable key value type %d",
+			kp->key_value_type);
+	}
+	if (!bp) {
+	} else if (*value_out) {
+		LogCrit(COMPONENT_FSAL,"response has more than one result?");
+		r = 1;
+		goto Done;
+	} else {
+		unsigned char *outp;
+		outp = malloc(bp->size);
+		if (!outp) {
+			LogCrit(COMPONENT_FSAL,"out of memory; cannot allocate %ld bytes", bp->size);
+			r = 1;
+			goto Done;
+		}
+		memcpy(outp, bp->value, bp->size);
+		*value_out = outp;
+		*value_size = bp->size;
+		kmip_memset(bp->value, 0, bp->size);
+	}
+	} break;
+default:
+	LogCrit(LOG_CRIT,"Unknown object at %p\n", pld->object);
+}
+		}
+	r = 0;
+Done:
+	if (r && *value_out) {
+		free(*value_out);
+		*value_out = 0;
+		value_size = 0;
+	}
+	if (need_to_free_response)
+		kmip_free_response_message(kconn->kmip_ctx, resp_m);
+
+	release_kmip_handle(kconn);
+	return r;
+}
+
+/**
+ * @brief routine to be called after the export root object is set.
+ *
+ * @param[in] cb                   pointer to the export data
+ * @param[in] obj                  root object
+ *
+ * @return 0 on success
+ * @return EINVAL on failure.
+ */
+
+int kmip_root_cb_func(struct exp_root_callback *cb,
+	struct fsal_obj_handle *obj)
+{
+	struct kmip_callback *data = container_of(cb, struct kmip_callback, callback);
+	struct gsh_export *export = cb->export;
+	fsal_status_t status;
+	int rc = 0;
+	unsigned char *value;
+	size_t value_len, len;
+
+	struct io_fscrypt_setkey fscrypt_key;
+
+	if (!data->kmip_key_id) {
+		LogCrit(COMPONENT_FSAL, "keyset callback: export = %d, obj = %p; no kmip_key_id",
+			export->export_id, obj);
+		rc = 0;
+		goto Done;
+	}
+
+	rc = kmip_get_keyvalue(data->kmip_key_id, &value, &value_len);
+
+	if (rc) {
+		LogCrit(COMPONENT_FSAL, "keyset callback: failed to get key for kmip_key_id = %s, export = %d",
+			data->kmip_key_id, export->export_id);
+		rc = EINVAL;
+		goto Done;
+	}
+
+	if (!value || value_len < 32) {
+		LogCrit(COMPONENT_FSAL, "keyset callback: runt/missing key for kmip_key_id = %s, export = %d; len=%ld",
+			data->kmip_key_id, export->export_id, value_len);
+		rc = EINVAL;
+		goto Done;
+	}
+
+unsigned short x;	// XXX temp kill
+memcpy(&x, value + value_len - 2, 2);	// XXX temp kill
+LogCrit(COMPONENT_FSAL, "keyset callback: for kmip_key_id = %s, export = %d; len=%ld v[*]=%x",
+data->kmip_key_id, export->export_id, value_len, x);	// XXX temp kill
+
+	memset(&fscrypt_key, 0, sizeof fscrypt_key);
+	len = value_len;
+	if (len > MAX_FSCRYPT_KEY_SIZE) len = MAX_FSCRYPT_KEY_SIZE;
+	fscrypt_key.keylen = len;
+	memcpy(fscrypt_key.data, value, len);
+	kmip_memset(value, 0, value_len);
+	free(value);
+
+	status = obj->obj_ops->control(obj, FSCRYPT_SETKEY, &fscrypt_key);
+
+	kmip_memset(&fscrypt_key, 0, sizeof fscrypt_key);
+
+	if (!FSAL_IS_SUCCESS(status)) {
+		LogCrit(COMPONENT_FSAL, "keyset failed: kmip_key_id = %s, export = %d, error = %d/%d",
+			data->kmip_key_id, export->export_id, status.major, status.minor);
+		rc = EINVAL;
+	}
+
+Done:
+	kmip_root_cb_free(cb);
+	return rc;
+}
+
+/**
+ * @brief routine to return all memory allocated in a exp root callback.
+ *
+ * @param[in]     cb    callback to be freed.
+ *
+ * @return 0
+ */
+
+int kmip_root_cb_free(struct exp_root_callback *cb)
+{
+	struct kmip_callback *data = container_of(cb, struct kmip_callback, callback);
+
+	gsh_free(data->kmip_key_id);
+	gsh_free(data);
+	return 0;
+}
+
+/**
+ * @brief Thread funtion to reap kmip connection after idle timeout
+ *
+ * @param[in] arg    Not used.
+ *
+ * @return "", always
+ */
+
+void * kmip_connection_reaper(void *a)
+{
+	useconds_t delay;
+	(void)a;
+	struct timeval idle[1], now[1], was[1];
+	int saved;
+struct my_kmip_connection *kconn;
+	idle->tv_sec = IDLE_TIMEOUT;
+	idle->tv_usec = 0;
+	for (;; usleep(delay)) {
+		delay = IDLE_TIMEOUT * 100000;
+		if (NOT_CONNECTED(saved_kconn) || BUSY(saved_kconn))
+			continue;
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &saved);
+		pthread_mutex_lock(&kmip_connection_lock);
+		gettimeofday(now, 0);
+		timersub(now, idle, was);
+		kconn = saved_kconn;
+		if (BUSY(kconn) || NOT_CONNECTED(kconn)) {
+			kconn = 0;
+		} else if (timerisset(kconn->lastuse) &&
+			!timercmp(kconn->lastuse, was, <)) {
+			kconn = 0;
+		} else {
+			kconn->idle = 0;
+		}
+		pthread_mutex_unlock(&kmip_connection_lock);
+		if (kconn) {
+			kmip_free_handle_stuff(kconn);
+		}
+		pthread_cond_broadcast(&kmip_connection_wait);
+		pthread_setcancelstate(saved, NULL);
+		if (kmip_shutting_down)
+			break;
+	}
+	return "";
+}
+
+/**
+ * @brief create reaper thread
+ *
+ * @return 0 always
+ */
+
+int start_kmip_connection_reaper(void)
+{
+	void *a1 = 0;
+	saved_kconn->idle = 1;
+	pthread_cond_init(&kmip_connection_wait, NULL);
+	pthread_mutex_init(&kmip_connection_lock, NULL);
+	pthread_create(&kmip_reaper_thread, NULL, kmip_connection_reaper, a1);
+
+	return 0;
+}
+
+/**
+ * @brief terminate the reaper thread
+ *
+ * This is called when the plugin is unloaded.
+ *
+ * @return 0 always
+ */
+
+void stop_kmip_reaper(void)
+{
+	void *thread_result;
+	if (pthread_cancel(kmip_reaper_thread) < 0) {
+		LogCrit(COMPONENT_FSAL, "Can't cancel reaper %d\n", errno);
+		return;
+	}
+	if (pthread_join(kmip_reaper_thread, &thread_result) < 0) {
+		LogCrit(COMPONENT_FSAL, "Can't join reaper %d\n", errno);
+		return;
+	}
+	(void) thread_result;
+}
+
+void destroy_mutexes()
+{
+	pthread_cond_destroy(&kmip_connection_wait);
+	pthread_mutex_destroy(&kmip_connection_lock);
+}
+
+/**
  * @brief Initialize kmip plugin
  */
 
 MODULE_INIT void init(void)
 {
 	LogDebug(COMPONENT_FSAL, "kmip load");
+	if (start_kmip_connection_reaper() < 0) {
+		LogCrit(COMPONENT_FSAL, "Failed to start connection reaper");
+	}
 	if (register_config_locked(&kmip_plugin_static_t.config) != 0) {
 		LogCrit(COMPONENT_FSAL, "Failed to register kmip plugin.");
 	}
@@ -309,72 +1060,12 @@ MODULE_FINI void finish(void)
 {
 	LogDebug(COMPONENT_FSAL, "kmip unload");
 
+	kmip_shutting_down = 1;
 	remove_export_extension(&kmip_export_extension_st.extension);
-	free_host_params();
 	if (unregister_config_locked(&kmip_plugin_static_t.config) != 0)
 		fprintf(stderr, "KMIP module failed to unregister");
-}
-
-int kmip_root_cb_func(struct exp_root_callback *cb,
-	struct fsal_obj_handle *obj)
-{
-	struct kmip_callback *data = container_of(cb, struct kmip_callback, callback);
-	struct gsh_export *export = cb->export;
-	fsal_status_t status;
-	int rc = 0;
-	char *cp;	// XXX temp kill
-	unsigned char *up, *tp, *ep;	// XXX temp kill
-
-struct {
-	uint64_t data[8];
-} dummy_key = {
-.data = {
-0x7d9a63c09eefd3aa,
-0x416e43558f09444a,
-0xfa6b8492fb432604,
-0x9942c6f001df5b31,
-0xf22c42b11fc3657b,
-0x6eb0f9fa5603c7d2,
-0x515db02cab0333f3,
-0xbb4142bc42ed8f6d
-} };
-
-	if (!data->kmip_key_id) {
-		LogCrit(COMPONENT_FSAL, "keyset callback: export = %d, obj = %p; no kmip_key_id",
-			export->export_id, obj);
-		return 0;
-	}
-
-	// XXX KMIP CALL GOES HERE
-
-	up = (unsigned char *) (dummy_key.data);	// XXX temp kill
-	ep = up + sizeof dummy_key.data;	// XXX temp kill
-	tp = up;	// XXX temp kill
-	for (cp = data->kmip_key_id; *cp; ++cp) {	// XXX temp kill
-		*tp ^= *cp;	// XXX temp kill
-		++tp;	// XXX temp kill
-		if (tp >= ep) tp = up;	// XXX temp kill
-	}	// XXX temp kill
-
-	LogCrit(COMPONENT_FSAL, "keyset callback: kmip_key_id = %s, export = %d, obj = %p",
-		data->kmip_key_id, export->export_id, obj);
-	status = obj->obj_ops->control(obj, FSCRYPT_SETKEY, &dummy_key);
-
-	if (!FSAL_IS_SUCCESS(status)) {
-		LogCrit(COMPONENT_FSAL, "keyset failed: kmip_key_id = %s, export = %d, error = %d/%d",
-			data->kmip_key_id, export->export_id, status.major, status.minor);
-		rc = EINVAL;
-	}
-
-	kmip_root_cb_free(cb);
-	return rc;
-}
-
-int kmip_root_cb_free(struct exp_root_callback *cb)
-{
-	struct kmip_callback *data = container_of(cb, struct kmip_callback, callback);
-
-	gsh_free(data->kmip_key_id);
-	gsh_free(data);
-	return 0;
+	stop_kmip_reaper();
+	(void) timed_wait_kmip_busy();
+	destroy_mutexes();
+	free_host_params();
 }
