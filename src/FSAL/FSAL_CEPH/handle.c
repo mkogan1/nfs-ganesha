@@ -3126,13 +3126,29 @@ static void ceph_fsal_handle_to_key(struct fsal_obj_handle *handle_pub,
 static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
 				       int operation, void *data)
 {
-	unsigned long long *x = data;
 	fsal_status_t status;
-LogCrit(COMPONENT_FSAL,
-"ceph_fsal_control op=%d data=%#llx,%#llx,%#llx,%#llx", operation,
-x[0], x[1], x[3], x[3]);
-//	status = fsalstat(ERR_FSAL_NOTSUPP, ENOTSUP);
-	status = fsalstat(ERR_FSAL_NO_ERROR, 0);
+	struct ceph_export *export =
+		container_of(op_ctx->fsal_export, struct ceph_export, export);
+	int retval = 0;
+	switch(operation)
+	{
+	case FSCRYPT_SETKEY:
+	{
+		struct io_fscrypt_setkey *key = data;
+unsigned long long *x = (unsigned long long *)key->data;	// XXX temp remove
+LogCrit(COMPONENT_FSAL,	// XXX temp remove
+"ceph_fsal_control setkey: len=%d data=%#llx,%#llx,%#llx,%#llx",	// XXX temp remove
+key->keylen, x[0], x[1], x[3], x[3]);	// XXX temp remove
+		status = fsalstat(ERR_FSAL_NO_ERROR, 0);
+		retval = ceph_add_fscrypt_key(export->cmount,
+			key->data, key->keylen, NULL, 0);
+		if (retval < 0) {
+			status = ceph2fsal_error(retval);
+		}
+	} break;
+	default:
+		status = fsalstat(ERR_FSAL_NOTSUPP, ENOTSUP);
+	}
 	return status;
 }
 
