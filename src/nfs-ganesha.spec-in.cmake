@@ -1,5 +1,4 @@
 %define __arch_install_post /usr/lib/rpm/check-rpaths /usr/lib/rpm/check-buildroot
-%define _unpackaged_files_terminate_build 0
 
 %if ( 0%{?suse_version} )
 BuildRequires: distribution-release
@@ -57,6 +56,9 @@ Requires: openSUSE-release
 
 @BCOND_9P@ 9P
 %global use_9P %{on_off_switch 9P}
+
+@BCOND_SAUNAFS@ saunafs
+%global use_saunafs %{on_off_switch saunafs}
 
 @BCOND_JEMALLOC@ jemalloc
 
@@ -479,6 +481,18 @@ This package contains a FSAL shared object to
 be used with NFS-Ganesha to support Gluster
 %endif
 
+#SAUNAFS
+%if %{with saunafs}
+%package saunafs
+Summary: The NFS-GANESHA SAUNAFS FSAL
+Group: Applications/System
+Requires:       nfs-ganesha = %{version}-%{release}
+
+%description saunafs
+This package contains a FSAL shared object to
+be used with NFS-Ganesha to support SAUNAFS
+%endif
+
 # SELINUX
 %if ( 0%{?fedora} >= 30 || 0%{?rhel} >= 8 )
 %package selinux
@@ -562,6 +576,7 @@ cmake3 .	-DCMAKE_BUILD_TYPE=Debug			\
 	-DUSE_FSAL_GPFS=%{use_fsal_gpfs}		\
 	-DUSE_FSAL_KVSFS=%{use_fsal_kvsfs}		\
 	-DUSE_FSAL_GLUSTER=%{use_fsal_gluster}		\
+	-DUSE_FSAL_SAUNAFS=%{use_fsal_saunafs}		\
 	-DUSE_SYSTEM_NTIRPC=%{use_system_ntirpc}	\
 	-DENABLE_QOS=%{use_qos}				\
 	-DUSE_TLS=%{use_tls}                            \
@@ -917,6 +932,11 @@ exit 0
 %config(noreplace) %{_sysconfdir}/ganesha/pt.conf
 %endif
 
+%if %{with saunafs}
+%files saunafs
+%{_libdir}/ganesha/libfsalsaunafs*
+%endif
+
 %if %{with lttng}
 %files lttng
 %{_libdir}/libganesha_trace*
@@ -934,8 +954,8 @@ exit 0
 %{python3_sitelib}/Ganesha/*
 %if ( ! 0%{?with_legacy_python_install} )
 %{python3_sitelib}/ganeshactl-*-info
-%{python3_sitelib}/ganesha_top-*-info
 %endif
+%{python3_sitelib}/ganesha_top-*-info
 %endif
 %if %{with gui_utils}
 %{_bindir}/ganesha-admin
