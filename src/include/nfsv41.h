@@ -6789,8 +6789,18 @@ static inline bool xdr_WRITE4resok(XDR *xdrs, WRITE4resok *objp)
 	return true;
 }
 
+char *nfsstat4_to_str(nfsstat4 code);
+
 static inline bool xdr_WRITE4res(XDR *xdrs, WRITE4res *objp)
-{
+{   
+	if (xdrs->x_op == XDR_ENCODE) {
+		LogEvent(COMPONENT_NFS_V4,
+			     "encode res_WRITE4 %p count = %" PRIu32 " committed = %d status %s",
+			     objp, objp->WRITE4res_u.resok4.count,
+			     objp->WRITE4res_u.resok4.committed,
+			     nfsstat4_to_str(objp->status));
+	}
+
 	if (!xdr_nfsstat4(xdrs, &objp->status))
 		return false;
 	switch (objp->status) {
