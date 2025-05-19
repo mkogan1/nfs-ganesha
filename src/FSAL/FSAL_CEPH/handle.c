@@ -2079,7 +2079,7 @@ exit:
 #endif
 }
 
-#if USE_FSAL_CEPH_FS_NONBLOCKING_IO
+#if USE_FSAL_CEPH_FS_NONBLOCKING_IOW
 void ceph_write2_cb(struct ceph_ll_io_info *cb_info)
 {
 	struct ceph_fsal_cb_info *cbi = cb_info->priv;
@@ -2197,7 +2197,7 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	struct ceph_export *export =
 		container_of(op_ctx->fsal_export, struct ceph_export, export);
 	uint64_t offset = write_arg->offset;
-#if USE_FSAL_CEPH_FS_NONBLOCKING_IO
+#if USE_FSAL_CEPH_FS_NONBLOCKING_IOW
 	struct ceph_fsal_cb_info *cbi;
 	int64_t result;
 #else
@@ -2206,7 +2206,7 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	int i, retval = 0;
 #endif
 
-#if USE_FSAL_CEPH_FS_NONBLOCKING_IO
+#if USE_FSAL_CEPH_FS_NONBLOCKING_IOW
 	if (write_arg->fsal_resume) {
 		ceph_write2_cb(write_arg->cbi);
 		return;
@@ -2219,7 +2219,7 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 #endif
 
 	/* Indicate a desire to start io and get a usable file descritor */
-#if USE_FSAL_CEPH_FS_NONBLOCKING_IO
+#if USE_FSAL_CEPH_FS_NONBLOCKING_IOW
 	status = fsal_start_io(&out_fd, obj_hdl, &myself->fd.fsal_fd,
 			       &cbi->temp_fd.fsal_fd, write_arg->state,
 			       FSAL_O_WRITE, false, NULL, bypass,
@@ -2239,7 +2239,7 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 
 	my_fd = container_of(out_fd, struct ceph_fd, fsal_fd);
 
-#if USE_FSAL_CEPH_FS_NONBLOCKING_IO
+#if USE_FSAL_CEPH_FS_NONBLOCKING_IOW
 	cbi->io_info.callback = ceph_write2_cb;
 	cbi->io_info.priv = cbi;
 	cbi->io_info.fh = my_fd->fd;
@@ -2333,7 +2333,7 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 				   obj_hdl->fileid, nb_written);
 #endif
 
-#if USE_FSAL_CEPH_FS_NONBLOCKING_IO
+#if USE_FSAL_CEPH_FS_NONBLOCKING_IOW
 #else
 out:
 #endif
@@ -2358,7 +2358,7 @@ exit:
 
 	done_cb(obj_hdl, status, write_arg, caller_arg);
 
-#if USE_FSAL_CEPH_FS_NONBLOCKING_IO
+#if USE_FSAL_CEPH_FS_NONBLOCKING_IOW
 	destroy_fsal_fd(&cbi->temp_fd.fsal_fd);
 	gsh_free(cbi);
 #endif
