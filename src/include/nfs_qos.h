@@ -43,15 +43,18 @@
 #define QOS_TASK_ASYNC_SCHEDULED 1
 
 /* QOS configuration values for bandwidth and iops */
-#define QOS_MIN_BW (1024UL * 1024) /* 1 MBps */
-#define QOS_MAX_BW (100UL * 1024 * 1024 * 1024) /* 100GBps */
-#define QOS_DEFAULT_EXPORT_BW (2UL * 1024 * 1024 * 1024) /* 2GBps */
-#define QOS_DEFAULT_CLIENT_BW (2UL * 1024 * 1024 * 1024) /* 2GBps */
+#define QOS_MIN_BW (1024UL * 32) /* 32 KiBps */
+#define QOS_MAX_BW (100UL * 1024 * 1024 * 1024) /* 100GiBps */
+#define QOS_DEFAULT_EXPORT_BW (2UL * 1024 * 1024 * 1024) /* 2GiBps */
+#define QOS_DEFAULT_CLIENT_BW (2UL * 1024 * 1024 * 1024) /* 2GiBps */
 
-#define QOS_MIN_IOPS (10) /* i.e 2.5 MBps worth of IO */
-#define QOS_MAX_IOPS (4 * 1024 * 100UL) /* 4op per MB * GB* 100 = 100GBps  */
-#define QOS_DEFAULT_EXPORT_IOPS (4 * 1024 * 2UL) /* 4op per MB * GB* 2 = 2GBps*/
-#define QOS_DEFAULT_CLIENT_IOPS (4 * 1024 * 2UL) /* 4op per MB * GB* 2 = 2GBps*/
+/* A single compound op for read/write will have 4 ops internally.
+ * Hence all IOPS are in multiple of 4 */
+/* Max Values are derived w.r.t internal OPS timimg calculation supported */
+#define QOS_MIN_IOPS (4 * 2) /* 2 compound OPS*/
+#define QOS_MAX_IOPS (4 * 4 * 1024 * 100UL) /* 409600 actual read/writes PS */
+#define QOS_DEFAULT_EXPORT_IOPS (4 * 1024 * 2UL) /* 4op per MB * GB*2=2iGBps*/
+#define QOS_DEFAULT_CLIENT_IOPS (4 * 1024 * 2UL) /* 4op per MB * GB*2=2GiBps*/
 
 #define QOS_MIN_TOKENS (QOS_MIN_BW * 3600) /* i.e 1MB * 3600Sec i.e 3600MB/Hr*/
 #define QOS_MAX_TOKENS (UINT64_MAX)
