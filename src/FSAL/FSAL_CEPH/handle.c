@@ -2288,13 +2288,14 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	}
 #else
 	LogEvent(COMPONENT_FSAL,
-		 "CDBG: Processing write offset %" PRIu64 " length %" PRIu64
+		 "CDBG: Processing write offset %" PRIu64 " length %" PRIu64,
 		 offset, (uint64_t) write_arg->io_request);
 
 	for (i = 0; i < write_arg->iov_count; i++) {
 		LogEvent(COMPONENT_FSAL,
-			 "CDBG: Calling ceph_ll_write iov %d %p offset %" PRIu64 " length %" PRIu64
-			 i, write_arg->iov[i].iov_len, write_arg->iov[i].iov_base);
+			 "CDBG: Calling ceph_ll_write iov[%d] %p offset %" PRIu64 " length %" PRIu64,
+			 i, write_arg->iov[i].iov_base, offset,
+			 write_arg->iov[i].iov_len);
 
 		nb_written = ceph_ll_write(export->cmount, my_fd->fd, offset,
 					   write_arg->iov[i].iov_len,
@@ -2316,8 +2317,8 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		offset += nb_written;
 	}
 
-	LogEvent(COMPONENT_FSAL, "CDBG: io_amount %" PRIu64,
-		 i, (uint64_t) write_arg->io_amount);
+	LogEvent(COMPONENT_FSAL, "CDBG: io_amount total %" PRIu64,
+		 (uint64_t) write_arg->io_amount);
 
 	if (write_arg->fsal_stable) {
 		retval = ceph_ll_fsync(export->cmount, my_fd->fd, false);
