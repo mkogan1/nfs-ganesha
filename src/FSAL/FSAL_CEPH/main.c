@@ -432,7 +432,6 @@ fsal_status_t node_takeover_reclaim(struct fsal_module *module_in, char *nodeid)
 	     node = avltree_next(node)) {
 		struct ceph_mount *cm;
 		char *uuid;
-		size_t len;
 
 		cm = avltree_container_of(node, struct ceph_mount,
 					  cm_avl_mount);
