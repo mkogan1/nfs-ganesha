@@ -2353,7 +2353,7 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		write_arg->io_amount = result;
 	}
 
-	GSH_UNIQUE_AUTO_TRACEPOINT(fsal_ceph, ceph_read, TRACE_DEBUG,
+	GSH_UNIQUE_AUTO_TRACEPOINT(fsal_ceph, ceph_write, TRACE_DEBUG,
 				   "Write. fileid: {}, result: {}",
 				   obj_hdl->fileid, result);
 
