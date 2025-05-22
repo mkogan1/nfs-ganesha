@@ -2355,13 +2355,13 @@ static void ceph_fsal_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		/* I/O actually completed... */
 		write_arg->io_amount = result;
 	}
-#else
+
 	LogEvent(COMPONENT_FSAL,
 		 "CDBG: Processing write offset %" PRIu64 " length %" PRIu64,
 		 offset, (uint64_t) write_arg->io_request);
 
 
-	GSH_UNIQUE_AUTO_TRACEPOINT(fsal_ceph, ceph_read, TRACE_DEBUG,
+	GSH_UNIQUE_AUTO_TRACEPOINT(fsal_ceph, ceph_write, TRACE_DEBUG,
 				   "Write. fileid: {}, result: {}",
 				   obj_hdl->fileid, result);
 
