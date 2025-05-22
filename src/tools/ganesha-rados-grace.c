@@ -141,14 +141,38 @@ int main(int argc, char *const *argv)
 		if (nodes > 0) {
 			int i;
 			int len = 0;
+			long val;
+			char *endptr;
+			bool prepend;
 
 			node_names = calloc(nodes, sizeof(char *));
 			/* create the node names */
 			for (i = 0; i < nodes; ++i) {
-				len = 6 + strlen(argv[optind+i]);
+				prepend = true;
+				errno = 0;
+
+				/* check if node name is numeric */
+				val = strtol(argv[optind + i], &endptr, 10);
+				if (errno) {
+					/* non-numeric */
+					len = 1;
+					prepend = false;
+				} else {
+					if (*endptr != '\0') {
+						/* non-numeric */
+						len = 1;
+						prepend = false;
+					} else /* numeric */
+						len = 6;
+				}
+				len += strlen(argv[optind + i]);
 				node_names[i] = calloc(1, len);
-				snprintf(node_names[i], len, "node%s",
-						argv[optind+i]);
+				if (prepend)
+					snprintf(node_names[i], len, "node%s",
+						 argv[optind + i]);
+				else
+					snprintf(node_names[i], len, "%s",
+						 argv[optind + i]);
 			}
 		}
 	}
