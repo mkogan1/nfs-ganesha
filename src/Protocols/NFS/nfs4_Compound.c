@@ -1741,7 +1741,7 @@ bool xdr_COMPOUND4res_extended(XDR *xdrs, struct COMPOUND4res_extended **objp)
  *
  * @param args Pointer to qos_op_cb_arg structure containing callback arguments
  */
-void nfs4_qos_compond_cb(void *args)
+bool nfs4_qos_compond_cb(void *args)
 {
 	struct qos_op_cb_arg *qos_cb_args = args;
 	compound_data_t *data = qos_cb_args->caller_data;
@@ -1757,6 +1757,7 @@ void nfs4_qos_compond_cb(void *args)
 			     data);
 	}
 	gsh_free(args);
+	return true;
 }
 #endif
 /* @} */

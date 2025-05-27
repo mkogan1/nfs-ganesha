@@ -45,7 +45,7 @@
 #include "export_mgr.h"
 #include "nfs_qos.h"
 unsigned int qos_initalized;
-typedef void (*qos_svc_rcb)(void *);
+typedef bool (*qos_svc_rcb)(void *);
 static void qos_token_exausted_deffer_task(void *ptr, void *caller_data,
 					   compound_data_t *data,
 					   unsigned int class_type,
@@ -55,7 +55,7 @@ static void *qos_thread_func(void *arg);
 static qos_client_entry_t *
 get_and_insert_client_details(qos_client_entry_t **head, compound_data_t *data);
 static timer_entry_t *create_timer_entry(uint64_t expiry,
-					 void (*callback)(void *), void *args);
+					 bool (*callback)(void *), void *args);
 static void insert_timer_entry(timer_entry_t **head, timer_entry_t *new_entry);
 static void remove_timer_entry(timer_entry_t **head,
 			       timer_entry_t *entry_to_remove);
@@ -1901,7 +1901,7 @@ static inline bool refresh_per_client_tokens(qos_client_t *client_entry)
  * @return Pointer to the newly created timer entry
  */
 static inline timer_entry_t *
-create_timer_entry(uint64_t expiry, void (*callback)(void *), void *args)
+create_timer_entry(uint64_t expiry, bool (*callback)(void *), void *args)
 {
 	timer_entry_t *new_entry = gsh_calloc(1, sizeof(timer_entry_t));
 
@@ -2078,7 +2078,11 @@ static inline void release_wait_ios(timer_entry_t **head,
 	timer_entry_t *expired = NULL;
 
 	while (current != NULL) {
-		current->callback(current->args);
+retry:
+		/* force releasing the wait IO's,
+		 * cleanup path, dynamic config changes enable<->disable */
+		if (!(current->callback(current->args)))
+			goto retry;
 		LogDebug(COMPONENT_QOS,
 			 "Force resume Timer:%p Expiry:%ld TCounter:%d",
 			 current, current->expiry, *counter1);
@@ -2107,11 +2111,12 @@ static void execute_qos_expired_timers(timer_entry_t **head,
 
 	while (current != NULL) {
 		if (current->expiry <= current_time) {
+			if (!(current->callback(current->args)))
+				break;
 			LogDebug(COMPONENT_QOS,
 				 "Exp_IO_T:%p CT:%ld Ex:%ld Tco:%d Tco2:%d",
 				 current, current_time, current->expiry,
 				 *counter1, *counter2);
-			current->callback(current->args);
 			expired = current;
 		}
 		current = current->next;
@@ -2411,6 +2416,9 @@ static inline void resume_bw_io_pepc(qos_export_t *export, unsigned int op_type)
 		uint64_t required_time_for_io =
 			(io_entry->size * 1000000) / bucket->max_bw_allowed;
 
+		if (!(io_entry->callback(io_entry->args)))
+			break;
+
 		/* Under heavy IO load, and multiple exports, consider enough
 		 * time looking backward for acutal BW calculation
 		 * and consumption
@@ -2427,7 +2435,6 @@ static inline void resume_bw_io_pepc(qos_export_t *export, unsigned int op_type)
 
 		--bucket->num_ios_waiting;
 		bucket->io_waitlist_qos_bc = io_entry->next;
-		io_entry->callback(io_entry->args);
 		LogDebug(COMPONENT_QOS, "Timer entry resumed:%p", io_entry);
 		gsh_free(io_entry);
 		io_entry = bucket->io_waitlist_qos_bc;
@@ -3194,6 +3201,9 @@ static inline void resume_iops_pepc(qos_export_t *export, unsigned int op_type)
 		 * time looking backward for acutal IOPS calculation
 		 * and consumption
 		 **/
+		if (!(io_entry->callback(io_entry->args)))
+			break;
+
 		if (((bucket->iops_ldct + required_time_for_io +
 		      IOPS_EXPORT_FW_IO_SCHEDULE) > current_time)) {
 			/* Resuming IOPS from last IO completion */
@@ -3206,7 +3216,6 @@ static inline void resume_iops_pepc(qos_export_t *export, unsigned int op_type)
 
 		--bucket->num_ios_waiting;
 		LogDebug(COMPONENT_QOS, "Timer entry resumed:%p", io_entry);
-		io_entry->callback(io_entry->args);
 		bucket->io_waitlist_qos_iops = io_entry->next;
 		gsh_free(io_entry);
 		io_entry = bucket->io_waitlist_qos_iops;

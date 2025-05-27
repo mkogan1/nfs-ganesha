@@ -662,13 +662,17 @@ void nfs4_op_write_same_Free(nfs_resop4 *resp)
  *  resuming the service request if necessary.
  *
  * @param args Pointer to qos_op_cb_arg structure containing callback arguments
+ * @return : true on IO resume, else false.
  */
-void nfs4_qos_write_cb(void *args)
+bool nfs4_qos_write_cb(void *args)
 {
 	struct qos_op_cb_arg *qos_cb_args = args;
 	struct nfs4_write_data *write_data = qos_cb_args->caller_data;
 
 	if (qos_cb_args->ratecontrol) {
+		if (!(write_data->qos_flag & IS_QOS_IO))
+			return false;
+
 		/* BW io, need to be resumed, should take default path */
 		LogFullDebug(COMPONENT_QOS, "Ratecontrol IO exit write_data:%p",
 			     write_data);
@@ -687,5 +691,6 @@ void nfs4_qos_write_cb(void *args)
 		svc_resume(write_data->data->req);
 	}
 	gsh_free(args);
+	return true;
 }
 #endif

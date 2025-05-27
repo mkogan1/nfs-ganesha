@@ -75,7 +75,7 @@ typedef struct timer_entry {
 	/* Size of the IO, required for BW calculation */
 	uint64_t size;
 	/* Callback function to call on timer expiry */
-	void (*callback)(void *);
+	bool (*callback)(void *);
 	/* Call back arg : struct qos_op_cb_arg  */
 	void *args;
 	struct timer_entry *next;
@@ -233,9 +233,9 @@ unsigned int QoS_Process(unsigned int size, void *caller_data,
 qos_client_t *pepc_get_client_from_list(qos_client_t *head,
 					sockaddr_t *client_addr);
 void copy_gsh_qos_mem(struct gsh_export *dest, struct gsh_export *src);
-void nfs4_qos_write_cb(void *args);
-void nfs4_qos_read_cb(void *args);
-void nfs4_qos_compond_cb(void *args);
+bool nfs4_qos_write_cb(void *args);
+bool nfs4_qos_read_cb(void *args);
+bool nfs4_qos_compond_cb(void *args);
 unsigned int QoS_Process_iops(compound_data_t *data);
 void qos_init(void);
 #endif

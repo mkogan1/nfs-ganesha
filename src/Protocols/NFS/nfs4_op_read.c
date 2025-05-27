@@ -279,13 +279,18 @@ static void nfs4_read_cb(struct fsal_obj_handle *obj, fsal_status_t ret,
  *  resuming the service request if necessary.
  *
  * @param args Pointer to qos_op_cb_arg structure containing callback arguments
+ *
+ * @return : true on IO resume, else false
  */
-void nfs4_qos_read_cb(void *args)
+bool nfs4_qos_read_cb(void *args)
 {
 	struct qos_op_cb_arg *qos_cb_args = args;
 	struct nfs4_read_data *read_data = qos_cb_args->caller_data;
 
 	if (qos_cb_args->ratecontrol) {
+		if (!(read_data->qos_flag & IS_QOS_IO))
+			return false;
+
 		/* BW io, needs to be resumed, should take default path */
 		LogFullDebug(COMPONENT_QOS, "Ratecontrol IO exit read_data:%p",
 			     read_data);
@@ -303,6 +308,7 @@ void nfs4_qos_read_cb(void *args)
 		svc_resume(read_data->data->req);
 	}
 	gsh_free(args);
+	return true;
 }
 #endif
 
