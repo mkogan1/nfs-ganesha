@@ -873,17 +873,16 @@ static enum nfs_req_result nfs4_read(struct nfs_argop4 *op,
 		/* We will be using the io_info that is part of read_data */
 		read_data->info.io_advise = info->io_advise;
 	}
+
 #ifdef ENABLE_QOS
-	if (QoS_Process(size, read_data, data, QOS_READ)) {
-		flags = atomic_postset_uint32_t_bits(&read_data->flags,
-						     ASYNC_PROC_EXIT);
-		read_data->qos_flag |= IS_QOS_IO;
-		read_data->qos_flag |=
-				(unsigned int)bypass * IS_QOS_IO_READ_BYPASS;
-		LogFullDebug(COMPONENT_QOS, "read_data %p bypass %d", read_data,
-			     bypass);
+	int qos_async_scheduled = 0;
+	read_data->qos_flag = IS_QOS_IO;
+	read_data->qos_flag |= (unsigned int)bypass * IS_QOS_IO_READ_BYPASS;
+	qos_async_scheduled = QoS_Process(size, read_data, data, QOS_READ);
+	if (qos_async_scheduled)
 		goto out;
-	}
+
+	read_data->qos_flag = 0;
 #endif
 
 again:
@@ -906,7 +905,7 @@ out:
 
 #ifdef ENABLE_QOS
 	if ((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE ||
-	    (read_data->qos_flag & IS_QOS_IO)) {
+	    qos_async_scheduled) {
 #else
 	if ((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) {
 #endif
