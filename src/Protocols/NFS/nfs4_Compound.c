@@ -1753,7 +1753,7 @@ void nfs4_qos_compond_cb(void *args)
 		svc_resume(data->req);
 
 	} else {
-		LogFullDebug(COMPONENT_QOS, "Ratecontrol IO exit data:%p",
+		LogFullDebug(COMPONENT_QOS, "Token IO exit data:%p",
 			     data);
 	}
 	gsh_free(args);

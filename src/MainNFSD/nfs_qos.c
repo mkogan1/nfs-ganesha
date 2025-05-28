@@ -46,7 +46,7 @@
 #include "nfs_qos.h"
 unsigned int qos_initalized;
 typedef void (*qos_svc_rcb)(void *);
-static void qos_token_exausted_deffer_task(void *ptr, void *caller_data,
+static void qos_token_exausted_deffer_task(void *ptr, void *caller_rw_data,
 					   compound_data_t *data,
 					   unsigned int class_type,
 					   unsigned int op_type);
@@ -59,13 +59,6 @@ static timer_entry_t *create_timer_entry(uint64_t expiry,
 static void insert_timer_entry(timer_entry_t **head, timer_entry_t *new_entry);
 static void remove_timer_entry(timer_entry_t **head,
 			       timer_entry_t *entry_to_remove);
-static inline bool check_bandwidth_and_delay(qos_bucket_t *bucket,
-					     uint64_t bytes, void *caller_data,
-					     unsigned int op_type);
-static inline bool check_bandwidth_and_reschedule(qos_bucket_t *bucket,
-						  uint64_t bytes,
-						  void *caller_data,
-						  unsigned int op_type);
 static inline uint64_t get_time_in_usec(void);
 static inline uint64_t get_time_future_useconds(uint64_t current,
 						uint64_t seconds,
@@ -83,7 +76,7 @@ qos_get_bw_bucket(void *entry, unsigned int class_type, unsigned int op_type);
 static inline qos_bucket_t *
 qos_get_iops_bucket(void *entry, unsigned int class_type, unsigned int op_type);
 static inline void qos_bw_bucket_deffer_task(qos_bucket_t *bucket,
-					     void *caller_data,
+					     void *caller_rw_data,
 					     uint64_t timeout, uint64_t size,
 					     unsigned int op_type);
 static inline void release_wait_ios(timer_entry_t **head,
@@ -104,9 +97,10 @@ static inline void resume_iops_pepc(qos_export_t *export, unsigned int op_type);
 #define THREAD_DELAY_NFS_ERR_DELAY_IMMED 1
 
 /* Currently BW controlling using SYNC is disabled
- * This is compile time config */
-#define BW_SYNC_ENABLE 0
-#define BW_ASYNC_ENABLE !BW_SYNC_ENABLE
+ * This is compile time config
+ */
+/* #define BW_SYNC_ENABLE */
+#define BW_ASYNC_ENABLE
 
 qos_block_config_t qos_block_config;
 qos_block_config_t *g_qos_config = (qos_block_config_t *)&qos_block_config;
@@ -391,7 +385,7 @@ void qos_free_mem(void *gsh_ptr, unsigned int qos_class_type)
  */
 void copy_gsh_qos_mem(struct gsh_export *dest, struct gsh_export *src)
 {
-	if (g_qos_config->enable_qos == false)
+	if (!g_qos_config->enable_qos)
 		return;
 
 	switch (g_qos_config->qos_type) {
@@ -758,7 +752,7 @@ static void update_class_iops_values(void *class, unsigned int class_type,
 static void set_class_values(void *entry, unsigned int class_type,
 			     struct qos_block_config *in)
 {
-	if (in->enable_qos == false) {
+	if (!in->enable_qos) {
 		in->enable_tokens = false;
 		in->enable_iops_control = false;
 		in->enable_bw_control = false;
@@ -782,7 +776,7 @@ static void setNode_pe(qos_export_t *node, uint16_t export_id,
 {
 	node->export_id = export_id;
 
-	if (g_qos_config->enable_qos == false)
+	if (!g_qos_config->enable_qos)
 		return;
 
 	LogDebug(COMPONENT_QOS, "Added new config for :%d", export_id);
@@ -803,7 +797,7 @@ static void setNode_pc(qos_client_t *node, sockaddr_t *client_addr,
 {
 	node->client_addr = client_addr;
 
-	if (g_qos_config->enable_qos == false)
+	if (!g_qos_config->enable_qos)
 		return;
 
 	LogDebug(COMPONENT_QOS, "Added new config for :%p", client_addr);
@@ -1178,54 +1172,22 @@ static inline qos_bucket_t *qos_get_iops_bucket(void *qos_class,
 }
 
 /**
- * Function to check if there is enough token available in the bucket.
- *
- * @param [in] bucket Pointer to qos_bucket_t structure representing the token.
- * @param [in] request_size Size of the request for tokens.
- * @return True if the token is available, False otherwise.
- */
-static inline bool qos_check_bucket_token_availability(qos_bucket_t *bucket,
-						       uint64_t request_size)
-{
-	if (bucket->tokens_consumed <= bucket->max_available_tokens)
-		return true;
-	else
-		return false;
-}
-
-/**
- * Function to consume tokens from the bucket.
- *
- * @param [in] bucket Pointer to qos_bucket_t structure representing the token.
- * @param [in] request_size Size of the request for tokens.
- */
-static inline void qos_consume_bucket_token(qos_bucket_t *bucket,
-					    uint64_t request_size)
-{
-	bucket->token_ldct = get_time_in_usec();
-	bucket->tokens_consumed += request_size;
-}
-
-/**
- * Function to check if there is enough token available.
+ * Function to check if the tokens are exhausted
  *
  * @param [in] qos_class Pointer to the QoS client or export structure.
- * @param [in] request_size Size of the request for tokens.
  * @param [in] op_type Type of the operation (read/write).
  * @param [in] class_type Type of the QoS class (export/client).
  * @return True if token is consumed, False otherwise.
  */
-static inline bool qos_check_token_availability(void *qos_class,
-						uint64_t request_size,
-						unsigned int op_type,
-						unsigned int class_type)
+static inline bool qos_check_token_exhausted(void *qos_class,
+					     unsigned int op_type,
+					     unsigned int class_type)
 {
 	qos_bucket_t *bucket =
 		qos_get_token_bucket(qos_class, class_type, op_type);
 
-	if (bucket == NULL)
-		return true;
-	return qos_check_bucket_token_availability(bucket, request_size);
+	return bucket != NULL && bucket->tokens_consumed
+		> bucket->max_available_tokens;
 }
 
 /**
@@ -1243,124 +1205,80 @@ static inline void qos_consume_token(void *qos_class, uint64_t request_size,
 	qos_bucket_t *bucket =
 		qos_get_token_bucket(qos_class, class_type, op_type);
 
-	if (bucket == NULL)
-		return;
-	return qos_consume_bucket_token(bucket, request_size);
-}
-
-/**
- * Function to control bandwidth for the bucket.
- *
- * @param [in] bucket Pointer to qos_bucket_t structure representing
- *			the bandwidth bucket.
- * @param [in] request_size Size of the request for bandwidth.
- * @param [in] op_type Type of the operation (read/write).
- * @param [in] caller_data Pointer to the caller data.
- * @return False if IO is recheduled and False if IO is not rescheduled.
- */
-static inline bool qos_control_bucket_bw(qos_bucket_t *bucket,
-					 uint64_t request_size,
-					 unsigned int op_type,
-					 void *caller_data)
-{
-	if (BW_SYNC_ENABLE &&
-	    !check_bandwidth_and_delay(bucket, request_size, caller_data,
-				       op_type)) {
-		return true;
-	} else if (BW_ASYNC_ENABLE &&
-		   !check_bandwidth_and_reschedule(bucket, request_size,
-						   caller_data, op_type)) {
-		return false;
-	} else {
-		return true;
+	if (bucket != NULL) {
+		bucket->token_ldct = get_time_in_usec();
+		bucket->tokens_consumed += request_size;
 	}
 }
 
 /**
- * Function to control bandwidth for the QoS class.
+ * Function to control bandwidth for the bucket associated with the QoS class.
  *
  * @param [in] qos_class Pointer to the QoS client or export structure.
  * @param [in] request_size Size of the request for bandwidth.
  * @param [in] op_type Type of the operation (read/write).
- * @param [in] caller_data Pointer to the caller data.
+ * @param [in] caller_rw_data Pointer to the caller data.
  * @param [in] class_type Type of the QoS class (export/client).
  * @return True if bandwidth is controlled, False otherwise.
  */
 static inline bool qos_control_bw(void *qos_class, uint64_t request_size,
-				  unsigned int op_type, void *caller_data,
+				  unsigned int op_type, void *caller_rw_data,
 				  unsigned int class_type)
 {
 	qos_bucket_t *bucket =
 		qos_get_bw_bucket(qos_class, class_type, op_type);
+	uint64_t last_time;
+	uint64_t required_time;
+	uint64_t current_time = get_time_in_usec();
 
 	if (bucket == NULL)
 		return true;
 
-	return qos_control_bucket_bw(bucket, request_size, op_type,
-				     caller_data);
-}
+	last_time = bucket->bw_ldct;
 
-/**
- * Function to defer the task for bandwidth control.
- *
- * @param [in] qos_class Pointer to the QoS client or export structure.
- * @param [in] caller_data Pointer to the caller data.
- * @param [in] size Size of the request.
- * @param [in] timeout Timeout for the task.
- * @param [in] op_type Type of the operation (read/write).
- * @param [in] class_type Type of the QoS class (export/client).
- */
-static inline void qos_bw_deffer_task(void *qos_class, void *caller_data,
-				      uint64_t size, uint64_t timeout,
-				      unsigned int op_type,
-				      unsigned int class_type)
-{
-	qos_bucket_t *bucket =
-		qos_get_bw_bucket(qos_class, class_type, op_type);
+	/* Microseconds required to meet bandwidth */
+	required_time = (request_size * 1000000) / bucket->max_bw_allowed;
 
-	if (bucket == NULL)
-		return;
+#ifdef BW_SYNC_ENABLE
+	int ret = 0;
+	/* Microseconds elapsed since last call */
+	uint64_t time_since_last_op = current_time - last_time;
 
-	return qos_bw_bucket_deffer_task(bucket, caller_data, size, timeout,
-					 op_type);
-}
+	if (time_since_last_op < required_time) {
+		/* Calculate delay in microseconds and sleep */
+		uint64_t delay_time = required_time - time_since_last_op;
+		struct timespec delay;
 
-/**
- * Function to check if the QoS token is available and consume it if possible
- * along with it takecare of BW calculation also
- *
- * @param [in] class_ptr Pointer to the QoS export object
- * @param [in] request_size Size of the I/O request in bytes
- * @param [in] op_type Type of the operation (read/write)
- * @param [in] caller_data Caller data passed to the callback function
- * @param [in] data Compound data associated with the I/O request
- * @param [in] class_type Type of the QoS class (export/client/pepc)
- * @return True if the token is available and consumed, False otherwise
- */
+		delay.tv_sec = delay_time / 1000000;
+		delay.tv_nsec = (delay_time % 1000000) * 1000;
+		/* Enforce delay to limit bandwidth */
+		ret = nanosleep(&delay, NULL);
 
-static bool qos_check_pe(void *class_ptr, uint64_t request_size,
-			 unsigned int op_type, void *caller_data,
-			 compound_data_t *data, unsigned int class_type)
-{
-	qos_export_t *qos_class = class_ptr;
-
-	PTHREAD_MUTEX_lock(&qos_class->lock);
-	if (!qos_check_token_availability(qos_class, request_size, op_type,
-					  QOS_EXPORT)) {
-		qos_token_exausted_deffer_task(qos_class, caller_data, data,
-					       QOS_EXPORT, op_type);
-		PTHREAD_MUTEX_unlock(&qos_class->lock);
-		return false;
-	} else if (!qos_control_bw(qos_class, request_size, op_type,
-				   caller_data, QOS_EXPORT)) {
-		/*  Consume the ASYNC scheduled tokens */
-		qos_consume_token(qos_class, request_size, op_type, QOS_EXPORT);
-		PTHREAD_MUTEX_unlock(&qos_class->lock);
-		return false;
+		if (ret != 0)
+			LogDebug(COMPONENT_QOS, "Sleep Failure ");
 	}
-	qos_consume_token(qos_class, request_size, op_type, QOS_EXPORT);
-	PTHREAD_MUTEX_unlock(&qos_class->lock);
-	return true;
+	bucket->bw_ldct = get_time_in_usec();
+	return false;
+#endif
+#ifdef BW_ASYNC_ENABLE
+	/* Condition will be true only after IDLE, or most of the time else */
+	if (current_time < (last_time + required_time)) {
+		/* Microseconds elapsed since last call */
+		bucket->bw_ldct = last_time + required_time;
+
+		qos_bw_bucket_deffer_task(bucket, caller_rw_data, request_size,
+					  last_time + required_time, op_type);
+		return false;
+	} else {
+		if (current_time <
+		    (last_time + required_time + BW_EXPORT_FW_IO_SCHEDULE))
+			bucket->bw_ldct += required_time;
+		else
+			bucket->bw_ldct = current_time + required_time;
+
+		return true;
+	}
+#endif
 }
 
 /**
@@ -1370,26 +1288,25 @@ static bool qos_check_pe(void *class_ptr, uint64_t request_size,
  * @param [in] class_ptr Pointer to the QoS Client object
  * @param [in] request_size Size of the I/O request in bytes
  * @param [in] op_type Type of the operation (read/write)
- * @param [in] caller_data Caller data passed to the callback function
+ * @param [in] caller_rw_data Caller data passed to the callback function
  * @param [in] data Compound data associated with the I/O request
  * @param [in] class_type Type of the QoS class (export/client/pepc)
  * @return True if the token is available and consumed, False otherwise
  */
 static bool qos_check_pc(void *class_ptr, uint64_t request_size,
-			 unsigned int op_type, void *caller_data,
+			 unsigned int op_type, void *caller_rw_data,
 			 compound_data_t *data, unsigned int class_type)
 {
 	qos_client_t *qos_class = class_ptr;
 
 	PTHREAD_MUTEX_lock(&qos_class->lock);
-	if (!qos_check_token_availability(qos_class, request_size, op_type,
-					  QOS_CLIENT)) {
-		qos_token_exausted_deffer_task(qos_class, caller_data, data,
+	if (qos_check_token_exhausted(qos_class, op_type, QOS_CLIENT)) {
+		qos_token_exausted_deffer_task(qos_class, caller_rw_data, data,
 					       QOS_CLIENT, op_type);
 		PTHREAD_MUTEX_unlock(&qos_class->lock);
 		return false;
 	} else if (!qos_control_bw(qos_class, request_size, op_type,
-				   caller_data, QOS_CLIENT)) {
+				   caller_rw_data, QOS_CLIENT)) {
 		qos_consume_token(qos_class, request_size, op_type, QOS_CLIENT);
 		PTHREAD_MUTEX_unlock(&qos_class->lock);
 		return false;
@@ -1406,36 +1323,36 @@ static bool qos_check_pc(void *class_ptr, uint64_t request_size,
  * @param [in] class_ptr Pointer to the QoS export object
  * @param [in] request_size Size of the I/O request in bytes
  * @param [in] op_type Type of the operation (read/write)
- * @param [in] caller_data Caller data passed to the callback function
+ * @param [in] caller_rw_data Caller data passed to the callback function
  * @param [in] data Compound data associated with the I/O request
  * @param [in] class_type Type of the QoS class (export/client/pepc)
  * @return True if the token is available and consumed, False otherwise
  */
 static bool qos_check_pepc(void *class_ptr, uint64_t request_size,
-			   unsigned int op_type, void *caller_data,
+			   unsigned int op_type, void *caller_rw_data,
 			   compound_data_t *data, unsigned int class_type)
 {
 	qos_export_t *e_qos_class = class_ptr;
 	qos_client_t *c_qos_class =
 		pepc_get_client(e_qos_class, &op_ctx->client->cl_addrbuf);
 
-	int export_token_available = qos_check_token_availability(
-		e_qos_class, request_size, op_type, QOS_EXPORT);
-	int client_token_available = qos_check_token_availability(
-		c_qos_class, request_size, op_type, QOS_CLIENT);
+	int export_token_exhausted = qos_check_token_exhausted(
+		e_qos_class, op_type, QOS_EXPORT);
+	int client_token_exhausted = qos_check_token_exhausted(
+		c_qos_class, op_type, QOS_CLIENT);
 
 	/*  here for accounting info take exportlevel lock,
 	 *  which will aloow us to handling the runtime disablement
 	 *  and enablement of QOS BW and Token control.
 	 *  IO Consumer thread will work on bucket locks */
 	PTHREAD_MUTEX_lock(&e_qos_class->lock);
-	if (!export_token_available) {
-		qos_token_exausted_deffer_task(e_qos_class, caller_data, data,
+	if (export_token_exhausted) {
+		qos_token_exausted_deffer_task(e_qos_class, caller_rw_data, data,
 					       QOS_EXPORT, op_type);
 		PTHREAD_MUTEX_unlock(&e_qos_class->lock);
 		return false;
-	} else if (!client_token_available) {
-		qos_token_exausted_deffer_task(c_qos_class, caller_data, data,
+	} else if (client_token_exhausted) {
+		qos_token_exausted_deffer_task(c_qos_class, caller_rw_data, data,
 					       QOS_CLIENT, op_type);
 		PTHREAD_MUTEX_unlock(&e_qos_class->lock);
 		return false;
@@ -1449,9 +1366,15 @@ static bool qos_check_pepc(void *class_ptr, uint64_t request_size,
 		qos_consume_token(c_qos_class, request_size, op_type,
 				  QOS_CLIENT);
 		if (c_qos_class->bw_enabled) {
-			qos_bw_deffer_task(c_qos_class, caller_data,
-					   request_size, get_time_in_usec(),
-					   op_type, QOS_CLIENT);
+			qos_bucket_t *bucket =
+			      qos_get_bw_bucket(c_qos_class, QOS_CLIENT, op_type);
+
+			if (bucket != NULL)
+				qos_bw_bucket_deffer_task(bucket,
+							  caller_rw_data,
+							  request_size,
+							  get_time_in_usec(),
+							  op_type);
 			PTHREAD_MUTEX_unlock(&e_qos_class->lock);
 			return false;
 		} else {
@@ -1466,42 +1389,59 @@ static bool qos_check_pepc(void *class_ptr, uint64_t request_size,
 /**
  * Function to process a export request for BW and Token.
  *
- * @param [in] size Size of the request.
- * @param [in] caller_data Pointer to the caller data.
+ * Check if the QoS token is available and consume it if possible
+ * along with it takecare of BW calculation also
+ *
+ * @param [in] request_size Size of the request.
+ * @param [in] caller_rw_data Pointer to the caller data.
  * @param [in] data Pointer to the compound_data_t structure containing
  *			the request data.
  * @param [in] op_type Type of the operation (read/write).
- * @return 0 if successful, 1 otherwise.
+ * @return true if op is to be deferred false otherwise
  */
-unsigned int QoS_Process_pe(unsigned int size, void *caller_data,
-			    compound_data_t *data, unsigned int op_type)
+bool QoS_Process_pe(uint64_t request_size, void *caller_rw_data,
+		    compound_data_t *data, unsigned int op_type)
 {
-	if (op_ctx->ctx_export->qos_class == NULL) {
+	qos_export_t *qos_class = op_ctx->ctx_export->qos_class;
+
+	if (qos_class == NULL) {
 		PTHREAD_MUTEX_lock(&g_qos_lock);
 		if (op_ctx->ctx_export->qos_class == NULL)
 			QoS_perExportInsert(op_ctx->ctx_export, g_qos_config);
 
 		PTHREAD_MUTEX_unlock(&g_qos_lock);
 	}
-	if (!qos_check_pe(op_ctx->ctx_export->qos_class, size, op_type,
-			  caller_data, data, QOS_EXPORT)) {
-		return 1;
+
+	PTHREAD_MUTEX_lock(&qos_class->lock);
+	if (qos_check_token_exhausted(qos_class, op_type, QOS_EXPORT)) {
+		qos_token_exausted_deffer_task(qos_class, caller_rw_data, data,
+					       QOS_EXPORT, op_type);
+		PTHREAD_MUTEX_unlock(&qos_class->lock);
+		return true;
+	} else if (!qos_control_bw(qos_class, request_size, op_type,
+				   caller_rw_data, QOS_EXPORT)) {
+		/*  Consume the ASYNC scheduled tokens */
+		qos_consume_token(qos_class, request_size, op_type, QOS_EXPORT);
+		PTHREAD_MUTEX_unlock(&qos_class->lock);
+		return true;
 	}
-	return 0;
+	qos_consume_token(qos_class, request_size, op_type, QOS_EXPORT);
+	PTHREAD_MUTEX_unlock(&qos_class->lock);
+	return false;
 }
 
 /**
  * Function to process a client request for BW and Token.
  *
  * @param [in] size Size of the request.
- * @param [in] caller_data Pointer to the caller data.
+ * @param [in] caller_rw_data Pointer to the caller data.
  * @param [in] data Pointer to the compound_data_t structure containing
  *			the request data.
  * @param [in] op_type Type of the operation (read/write).
- * @return 0 if successful, 1 otherwise.
+ * @return true if op is to be deferred false otherwise
  */
-unsigned int QoS_Process_pc(unsigned int size, void *caller_data,
-			    compound_data_t *data, unsigned int op_type)
+bool QoS_Process_pc(uint64_t request_size, void *caller_rw_data,
+		    compound_data_t *data, unsigned int op_type)
 {
 	if (op_ctx->client->qos_class == NULL) {
 		PTHREAD_MUTEX_lock(&g_qos_lock);
@@ -1511,7 +1451,7 @@ unsigned int QoS_Process_pc(unsigned int size, void *caller_data,
 
 		PTHREAD_MUTEX_unlock(&g_qos_lock);
 	}
-	if (!qos_check_pc(op_ctx->client->qos_class, size, op_type, caller_data,
+	if (!qos_check_pc(op_ctx->client->qos_class, request_size, op_type, caller_rw_data,
 			  data, QOS_CLIENT)) {
 		return 1;
 	}
@@ -1522,14 +1462,14 @@ unsigned int QoS_Process_pc(unsigned int size, void *caller_data,
  * Function to process a pepc export request for BW and Token.
  *
  * @param [in] size Size of the request.
- * @param [in] caller_data Pointer to the caller data.
+ * @param [in] caller_rw_data Pointer to the caller data.
  * @param [in] data Pointer to the compound_data_t structure containing
  *			the request data.
  * @param [in] op_type Type of the operation (read/write).
- * @return 0 if successful, 1 otherwise.
+ * @return true if op is to be deferred false otherwise
  */
-unsigned int QoS_Process_pepc(unsigned int size, void *caller_data,
-			      compound_data_t *data, unsigned int op_type)
+bool QoS_Process_pepc(uint64_t request_size, void *caller_rw_data,
+		      compound_data_t *data, unsigned int op_type)
 {
 	qos_export_t *export = op_ctx->ctx_export->qos_class;
 	sockaddr_t *client_addr = &op_ctx->client->cl_addrbuf;
@@ -1552,7 +1492,7 @@ unsigned int QoS_Process_pepc(unsigned int size, void *caller_data,
 	/* Is QOS disabled for this particular export */
 	if (export->bw_enabled || export->token_enabled) {
 		(void)pepc_get_client(export, client_addr);
-		if (!qos_check_pepc(export, size, op_type, caller_data, data,
+		if (!qos_check_pepc(export, request_size, op_type, caller_rw_data, data,
 				    QOS_PEPC)) {
 			return 1;
 		}
@@ -1564,31 +1504,40 @@ unsigned int QoS_Process_pepc(unsigned int size, void *caller_data,
  * Function to process a QoS request.
  *
  * @param [in] size Size of the request.
- * @param [in] caller_data Pointer to the caller data.
+ * @param [in] caller_rw_data Pointer to the caller data.
  * @param [in] data Pointer to the compound_data_t structure containing
  *			the request data.
  * @param [in] op_type Type of the operation (read/write).
- * @return 0 if successful, 1 otherwise.
+ * @return true if op is to be deferred false otherwise
  */
-unsigned int QoS_Process(unsigned int size, void *caller_data,
-			 compound_data_t *data, unsigned int op_type)
+bool QoS_Defer_Process(uint64_t request_size, void *caller_rw_data,
+		       compound_data_t *data, unsigned int op_type)
 {
-	unsigned int ret = 0;
+	if (!g_qos_config->enable_qos)
+		return false;
 
-	if (g_qos_config->qos_type == QOS_NOT_ENABLED ||
-	    g_qos_config->enable_qos == 0) {
-		ret = 0;
-	} else if (g_qos_config->qos_type == QOS_PER_EXPORT_ENABLED) {
-		ret = QoS_Process_pe(size, caller_data, data, op_type);
-	} else if (g_qos_config->qos_type == QOS_PER_CLIENT_ENABLED) {
-		ret = QoS_Process_pc(size, caller_data, data, op_type);
-	} else if (g_qos_config->qos_type == QOS_PEREXPORT_PERCLIENT_ENABLED) {
-		ret = QoS_Process_pepc(size, caller_data, data, op_type);
-	} else {
-		LogDebug(COMPONENT_QOS, " INVALID QOS_TYPE:%d",
-			 g_qos_config->qos_type);
+	switch (g_qos_config->qos_type) {
+	case QOS_NOT_ENABLED:
+		return false;
+
+	case QOS_PER_EXPORT_ENABLED:
+		return QoS_Process_pe(request_size, caller_rw_data, data,
+				      op_type);
+
+	case QOS_PER_CLIENT_ENABLED:
+		return QoS_Process_pc(request_size, caller_rw_data, data,
+				      op_type);
+
+	case QOS_PEREXPORT_PERCLIENT_ENABLED:
+		return QoS_Process_pepc(request_size, caller_rw_data, data,
+					op_type);
+
+	default:
+		LogCrit(COMPONENT_QOS, " INVALID QOS_TYPE:%d",
+			g_qos_config->qos_type);
 	}
-	return ret;
+
+	return false;
 }
 
 /**
@@ -1649,12 +1598,12 @@ static inline struct qos_op_cb_arg *alloc_qos_cb_args(void *caller_data,
  * Function to handle the token exhausted case and deffer the task.
  *
  * @param [in] ptr Pointer to the QoS client or export structure.
- * @param [in] caller_data Pointer to the caller data.
+ * @param [in] caller_rw_data Pointer to the caller data.
  * @param [in] data Pointer to compound_data_t containing the request data.
  * @param [in] class_type Type of the QoS class (export/client).
  * @param [in] op_type Type of the operation (read/write).
  */
-static void qos_token_exausted_deffer_task(void *ptr, void *caller_data,
+static void qos_token_exausted_deffer_task(void *ptr, void *caller_rw_data,
 					   compound_data_t *data,
 					   unsigned int class_type,
 					   unsigned int op_type)
@@ -1664,7 +1613,7 @@ static void qos_token_exausted_deffer_task(void *ptr, void *caller_data,
 	unsigned int *num_ios_waiting = NULL;
 	uint64_t timeout = 0;
 	struct qos_op_cb_arg *qos_cb_args =
-		alloc_qos_cb_args(caller_data, NON_RATELIMITING_IO);
+		alloc_qos_cb_args(caller_rw_data, NON_RATELIMITING_IO);
 	uint64_t ltime = get_time_in_usec();
 	uint64_t time_to_refresh =
 		qos_get_time_to_tokenrefresh(ptr, class_type, op_type, ltime);
@@ -1738,24 +1687,28 @@ static inline uint64_t get_time_future_useconds(uint64_t current,
  * Function to deffer a task for bandwidth control
  *
  * @param [in] bucket Pointer to the bucket object
- * @param [in] caller_data Caller data passed to the callback function
+ * @param [in] caller_rw_data Caller data passed to the callback function
  * @param [in] size Size of the data in bytes
  * @param [in] timeout Timeout for the task in microseconds
  * @param [in] op_type Type of the operation (read/write)
  */
 static inline void qos_bw_bucket_deffer_task(qos_bucket_t *bucket,
-					     void *caller_data, uint64_t size,
+					     void *caller_rw_data, uint64_t size,
 					     uint64_t timeout,
 					     unsigned int op_type)
 {
 	struct qos_op_cb_arg *qos_cb_args =
-		alloc_qos_cb_args(caller_data, RATELIMITING_IO);
+		alloc_qos_cb_args(caller_rw_data, RATELIMITING_IO);
 	timer_entry_t *new_timer_entry = create_timer_entry(
 		timeout, get_qos_resume_cb(op_type), (void *)qos_cb_args);
+
 	new_timer_entry->size = size;
+
 	PTHREAD_MUTEX_lock(&bucket->lock);
+
 	insert_timer_entry(&(bucket->io_waitlist_qos_bc), new_timer_entry);
 	++bucket->num_ios_waiting;
+
 	PTHREAD_MUTEX_unlock(&bucket->lock);
 }
 
@@ -1764,13 +1717,13 @@ static inline void qos_bw_bucket_deffer_task(qos_bucket_t *bucket,
  *	NON-Blocking IO
  * @param [in] bucket Pointer to the bucket object
  * @param [in] bytes Size of the data in bytes
- * @param [in] caller_data Caller data passed to the callback function
+ * @param [in] caller_rw_data Caller data passed to the callback function
  * @param [in] op_type Type of the operation (read/write)
  * @return True if the bandwidth is sufficient, False otherwise
  */
 static inline bool check_bandwidth_and_reschedule(qos_bucket_t *bucket,
 						  uint64_t bytes,
-						  void *caller_data,
+						  void *caller_rw_data,
 						  unsigned int op_type)
 {
 	uint64_t last_time = bucket->bw_ldct;
@@ -1783,7 +1736,7 @@ static inline bool check_bandwidth_and_reschedule(qos_bucket_t *bucket,
 		/* Microseconds elapsed since last call */
 		bucket->bw_ldct = last_time + required_time;
 
-		qos_bw_bucket_deffer_task(bucket, caller_data, bytes,
+		qos_bw_bucket_deffer_task(bucket, caller_rw_data, bytes,
 					  last_time + required_time, op_type);
 		return false;
 	} else {
@@ -1795,44 +1748,6 @@ static inline bool check_bandwidth_and_reschedule(qos_bucket_t *bucket,
 
 		return true;
 	}
-}
-
-/**
- * Function to check bandwidth and delay based on current settings
- *	NON-Blocking IO
- * @param [in] bucket Pointer to the bucket object
- * @param [in] bytes Size of the data in bytes
- * @param [in] caller_data Caller data passed to the callback function
- * @param [in] op_type Type of the operation (read/write)
- * @return True if the bandwidth is sufficient, False otherwise
- */
-static inline bool check_bandwidth_and_delay(qos_bucket_t *bucket,
-					     uint64_t bytes, void *caller_data,
-					     unsigned int op_type)
-{
-	uint64_t last_time = bucket->bw_ldct;
-	uint64_t current_time = get_time_in_usec();
-	int ret = 0;
-	/* Microseconds elapsed since last call */
-	uint64_t time_since_last_op = current_time - last_time;
-	/* Microseconds required to meet bandwidth */
-	uint64_t required_time = (bytes * 1000000) / bucket->max_bw_allowed;
-
-	if (time_since_last_op < required_time) {
-		/* Calculate delay in microseconds and sleep */
-		uint64_t delay_time = required_time - time_since_last_op;
-		struct timespec delay;
-
-		delay.tv_sec = delay_time / 1000000;
-		delay.tv_nsec = (delay_time % 1000000) * 1000;
-		/* Enforce delay to limit bandwidth */
-		ret = nanosleep(&delay, NULL);
-
-		if (ret != 0)
-			LogDebug(COMPONENT_QOS, "Sleep Failure ");
-	}
-	bucket->bw_ldct = get_time_in_usec();
-	return true;
 }
 
 /**
@@ -2684,7 +2599,7 @@ int var[2] = { QOS_READ, QOS_WRITE };
  */
 static void qos_thread_init(void)
 {
-	if (g_qos_config->enable_qos == 0)
+	if (!g_qos_config->enable_qos)
 		return;
 
 	PTHREAD_MUTEX_lock(&g_qos_lock);
@@ -2774,15 +2689,15 @@ uint32_t get_export_client_count(qos_export_t *e_qos_class)
  * and inserts it into the appropriate waitlist.
  *
  * @param [in] bucket Pointer to the qos_bucket_t representing the bucket
- * @param [in] caller_data Caller-specific data to be passed with the IOPS task
+ * @param [in] data Compound data to be passed with the IOPS task
  * @param [in] size Size of the IOPS task
  * @param [in] timeout in microseconds after which IOPS task should be executed.
  */
-void qos_iops_deffer_task(qos_bucket_t *bucket, void *caller_data,
+void qos_iops_deffer_task(qos_bucket_t *bucket, compound_data_t *data,
 			  uint64_t size, uint64_t timeout)
 {
 	struct qos_op_cb_arg *qos_cb_args =
-		alloc_qos_cb_args(caller_data, RATELIMITING_IO);
+		alloc_qos_cb_args(data, RATELIMITING_IO);
 	timer_entry_t *new_timer_entry = create_timer_entry(
 		timeout, nfs4_qos_compond_cb, (void *)qos_cb_args);
 	new_timer_entry->size = size;
@@ -2980,7 +2895,7 @@ unsigned int QoS_Process_iops(compound_data_t *data)
 	struct gsh_export *export = NULL;
 	uint32_t op_type = QOS_WRITE;
 
-	if (g_qos_config->enable_qos == 0 ||
+	if (!g_qos_config->enable_qos ||
 	    g_qos_config->enable_iops_control == 0)
 		return ret;
 

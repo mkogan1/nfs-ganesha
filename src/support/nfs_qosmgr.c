@@ -1117,6 +1117,8 @@ void dbus_qosmgr_init(void)
 {
 	if (g_qos_config->enable_qos) {
 		switch (g_qos_config->qos_type) {
+		case QOS_NOT_ENABLED:
+			break;
 		case QOS_PER_EXPORT_ENABLED:
 			qos_interface.methods = qos_methods_ps;
 			break;
@@ -1125,6 +1127,8 @@ void dbus_qosmgr_init(void)
 			break;
 		case QOS_PEREXPORT_PERCLIENT_ENABLED:
 			qos_interface.methods = qos_methods_pepc;
+			break;
+		default:
 			break;
 		}
 		gsh_dbus_register_path("QosMgr", dbus_qos_interface);

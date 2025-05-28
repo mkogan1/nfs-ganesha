@@ -168,6 +168,9 @@ enum nfs_req_result nfs4_op_write_resume(struct nfs_argop4 *op,
 
 #ifdef ENABLE_QOS
 	if (write_data->qos_flag & IS_QOS_IO) {
+		/* QOS resumed this operation, need to actually make the write2
+		 * call.
+		 */
 		write_data->qos_flag = 0;
 		atomic_postclear_uint32_t_bits(
 			&write_data->flags, ASYNC_PROC_EXIT | ASYNC_PROC_DONE);
@@ -540,11 +543,16 @@ enum nfs_req_result nfs4_op_write(struct nfs_argop4 *op, compound_data_t *data,
 
 	data->op_data = write_data;
 #ifdef ENABLE_QOS
-	if (QoS_Process(size, write_data, data, QOS_WRITE)) {
+	if (QoS_Defer_Process(size, write_data, data, QOS_WRITE)) {
+		/* Operation has been suspended, the ONLY thing we can touch
+		 * from write_data is the flags, the operation MAY have already
+		 * been resumed and another thread now owns write_data. The
+		 * flags field is how we signal that other thread what's up.
+		 */
 		flags = atomic_postset_uint32_t_bits(&write_data->flags,
 						     ASYNC_PROC_EXIT);
-		write_data->qos_flag |= IS_QOS_IO;
-		LogFullDebug(COMPONENT_QOS, "write_data %p", write_data);
+		LogFullDebug(COMPONENT_QOS, "QOS Suspend write_data %p",
+			     write_data);
 		goto out;
 	}
 #endif
@@ -572,12 +580,7 @@ out:
 		state_open = NULL;
 	}
 
-#ifdef ENABLE_QOS
-	if (((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) ||
-	    (write_data->qos_flag & IS_QOS_IO)) {
-#else
 	if ((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) {
-#endif
 		/* The write was not finished before we got here. When the
 		 * write completes, nfs4_write_cb() will have to reschedule the
 		 * request for completion. The resume will be resolved by
@@ -705,6 +708,9 @@ void nfs4_qos_write_cb(void *args)
 		LogFullDebug(COMPONENT_QOS, "Ratecontrol IO exit write_data:%p",
 			     write_data);
 		write_data->res_WRITE4->status = NFS4_OK;
+
+		/* Indicate resume for QOS */
+		write_data->qos_flag |= IS_QOS_IO;
 		svc_resume(write_data->data->req);
 
 	} else {

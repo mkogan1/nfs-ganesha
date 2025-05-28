@@ -26,18 +26,22 @@
 
 #include <time.h>
 
+/* QOS Flags for Read/Write */
 #define IS_QOS_IO (1 << 0)
-#define IS_QOS_IO_READ_BYPASS (1 << 1)
+
+/* QOS Flags for Compound */
 #define IS_QOS_COMPOUND_IO (1 << 3)
 #define IS_QOS_IOPS_ACCOUNTED (1 << 4)
 
 #define NON_RATELIMITING_IO 0
 #define RATELIMITING_IO 1
 
-#define QOS_NOT_ENABLED 0
-#define QOS_PER_EXPORT_ENABLED 1
-#define QOS_PER_CLIENT_ENABLED 2
-#define QOS_PEREXPORT_PERCLIENT_ENABLED 3
+enum qos_flavor {
+	QOS_NOT_ENABLED = 0,
+	QOS_PER_EXPORT_ENABLED = 1,
+	QOS_PER_CLIENT_ENABLED = 2,
+	QOS_PEREXPORT_PERCLIENT_ENABLED = 3,
+};
 
 #define QOS_TASK_ASYNC_NOT_SCHEDULED 0
 #define QOS_TASK_ASYNC_SCHEDULED 1
@@ -175,7 +179,7 @@ typedef struct qos_block_config {
 	bool combined_rw_bw_control;
 	bool combined_rw_token_control;
 	bool combined_rw_iops_control;
-	int qos_type;
+	enum qos_flavor qos_type;
 
 	uint64_t max_export_combined_bw;
 	uint64_t max_client_combined_bw;
@@ -228,8 +232,8 @@ void QoS_perExportInsert(struct gsh_export *export,
 			 struct qos_block_config *qos_block);
 void qos_free_mem(void *gsh_ptr, unsigned int qos_class_type);
 void qos_drain_bw_ios(void *qos_class, unsigned int qos_class_type);
-unsigned int QoS_Process(unsigned int size, void *caller_data,
-			 compound_data_t *data, unsigned int op_type);
+bool QoS_Defer_Process(uint64_t request_size, void *caller_rw_data,
+		       compound_data_t *data, unsigned int op_type);
 qos_client_t *pepc_get_client_from_list(qos_client_t *head,
 					sockaddr_t *client_addr);
 void copy_gsh_qos_mem(struct gsh_export *dest, struct gsh_export *src);
