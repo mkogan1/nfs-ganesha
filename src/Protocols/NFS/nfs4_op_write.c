@@ -513,15 +513,17 @@ enum nfs_req_result nfs4_op_write(struct nfs_argop4 *op, compound_data_t *data,
 	write_data->obj = obj;
 
 	data->op_data = write_data;
+
 #ifdef ENABLE_QOS
-	if (QoS_Process(size, write_data, data, QOS_WRITE)) {
-		flags = atomic_postset_uint32_t_bits(&write_data->flags,
-						     ASYNC_PROC_EXIT);
-		write_data->qos_flag |= IS_QOS_IO;
-		LogFullDebug(COMPONENT_QOS, "write_data %p", write_data);
+	int qos_async_scheduled = 0;
+	write_data->qos_flag = IS_QOS_IO;
+	qos_async_scheduled = QoS_Process(size, write_data, data, QOS_WRITE);
+	if (qos_async_scheduled)
 		goto out;
-	}
+
+	write_data->qos_flag = 0;
 #endif
+
 again:
 
 	/* Do the actual write */
@@ -542,7 +544,7 @@ out:
 
 #ifdef ENABLE_QOS
 	if (((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) ||
-	    (write_data->qos_flag & IS_QOS_IO)) {
+	    qos_async_scheduled) {
 #else
 	if ((flags & ASYNC_PROC_DONE) != ASYNC_PROC_DONE) {
 #endif
