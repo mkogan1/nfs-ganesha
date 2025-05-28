@@ -141,7 +141,6 @@ int main(int argc, char *const *argv)
 		if (nodes > 0) {
 			int i;
 			int len = 0;
-			long val;
 			char *endptr;
 			bool prepend;
 
@@ -152,7 +151,7 @@ int main(int argc, char *const *argv)
 				errno = 0;
 
 				/* check if node name is numeric */
-				val = strtol(argv[optind + i], &endptr, 10);
+				(void) strtol(argv[optind + i], &endptr, 10);
 				if (errno) {
 					/* non-numeric */
 					len = 1;
