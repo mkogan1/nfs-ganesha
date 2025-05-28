@@ -71,6 +71,14 @@ async(bool, default false)
 zerocopy(bool, default false)
     Enable ceph zero copy I/O. Zero copy and client_oc are incompatible.
 
+use_old_uuid(bool, default false)
+    Use old uuid logic for ceph client. Useful when upgrading from pre 7.0
+    version to latest. If this flag is set, then continue using it. As per old
+    logic the uuid is formed as "ganesha-<nodeid>-<export-id>". As per new logic
+    the uuid is formed as "ganesha-<64-bytes-hash>", and the hash is formed
+    using nodeid, userid, fs_name and mount path. For fresh deployments of 7.0
+    and later versions do not set this parameter.
+
 See also
 ==============================
 :doc:`ganesha-config <ganesha-config>`\(8)

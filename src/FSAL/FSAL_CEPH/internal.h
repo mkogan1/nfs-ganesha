@@ -67,6 +67,7 @@ struct ceph_fsal_module {
 	bool client_oc;
 	bool async;
 	bool zerocopy;
+	bool use_old_uuid;
 };
 extern struct ceph_fsal_module CephFSM;
 
