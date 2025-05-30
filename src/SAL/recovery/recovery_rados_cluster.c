@@ -35,9 +35,7 @@
 #include "sal_functions.h"
 #include "recovery_rados.h"
 
-/* Use hostname as nodeid in cluster */
-char *nodeid;
-static bool takeover = false;
+static bool takeover;
 /* recovery rados object names for takeover */
 static char object_takeover[NI_MAXHOST];
 static char object_takeover_old[NI_MAXHOST];
@@ -93,37 +91,13 @@ static int ip_str_to_int(char *ip_str)
 
 static int rados_cluster_init(void)
 {
-	int ret, node_id;
+	int ret;
 	long maxlen = sysconf(_SC_HOST_NAME_MAX);
 
-	nodeid = gsh_malloc(maxlen);
-
-	/* If no nodeid is specified, then use the hostname */
-	if (rados_kv_param.nodeid >= 0) {
-		node_id = rados_kv_param.nodeid;
-		/* check nodeid override with "I" option */
-		if (g_nodeid >= 0)
-			node_id = g_nodeid;
-		ret = snprintf(nodeid, maxlen, "node%d", node_id);
-		if (unlikely(ret >= maxlen)) {
-			LogCrit(COMPONENT_CLIENTID, "node%d too long", node_id);
-			ret = -ENAMETOOLONG;
-			goto out_free_nodeid;
-		} else if (unlikely(ret < 0)) {
-			ret = errno;
-			LogCrit(COMPONENT_CLIENTID,
-				"Unexpected return from snprintf %d error %s",
-				ret, strerror(ret));
-			goto out_free_nodeid;
-		}
-	} else {
-		ret = gethostname(nodeid, maxlen);
-		if (ret) {
-			ret = -errno;
-			LogCrit(COMPONENT_CLIENTID, "gethostname failed: %d",
-				errno);
-			goto out_free_nodeid;
-		}
+	ret = set_nodeid();
+	if (ret < 0) {
+		LogCrit(COMPONENT_CLIENTID, "Failed to set nodeid: %d", ret);
+		goto out_free_nodeid;
 	}
 
 	/* Form the recovery object name if IP Based recovery is enabled */
