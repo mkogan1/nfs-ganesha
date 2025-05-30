@@ -128,73 +128,27 @@ struct cleanup_list_element rados_ng_cleanup_element = {
 
 static int rados_ng_init(void)
 {
-	int ret, node_id;
+	int ret;
 	size_t len;
 	struct gsh_refstr *recov_oid;
-	char host[NI_MAXHOST];
 	rados_write_op_t op;
-	bool use_host_name = false;
 
 	PTHREAD_MUTEX_init(&grace_op_lock, NULL);
 
 	RegisterCleanup(&rados_ng_cleanup_element);
 
-	if (nfs_param.core_param.clustered) {
-		/* Get the nodeid from config */
-		node_id = rados_kv_param.nodeid;
-		/* check nodeid override with "I" option */
-		if (g_nodeid >= 0)
-			node_id = g_nodeid;
-		/* check if we need to use host-name */
-		if (node_id < 0)
-			use_host_name = true;
-	}
-	if (!use_host_name) {
-		ret = snprintf(host, sizeof(host), "node%d", node_id);
-
-		if (unlikely(ret >= sizeof(host))) {
-			LogCrit(COMPONENT_CLIENTID, "node%d too long",
-				node_id);
-			return -ENAMETOOLONG;
-		} else if (unlikely(ret < 0)) {
-			ret = errno;
-			LogCrit(COMPONENT_CLIENTID,
-				"Unexpected return from snprintf %d error %s",
-				ret, strerror(ret));
-			return -ret;
-		}
-	} else if (g_node_vip) {
-		ret = snprintf(host, sizeof(host), "%s", g_node_vip);
-		if (unlikely(ret >= sizeof(host))) {
-			LogCrit(COMPONENT_CLIENTID, "node%s too long",
-				g_node_vip);
-			return -ENAMETOOLONG;
-		} else if (unlikely(ret < 0)) {
-			ret = errno;
-			LogCrit(COMPONENT_CLIENTID,
-				"Unexpected return from snprintf %d error %s (%d)",
-				ret, strerror(ret), ret);
-			return ret;
-		}
-
-	} else {
-		/* use hostname */
-		ret = gethostname(host, sizeof(host));
-		if (ret) {
-			ret = errno;
-			LogCrit(COMPONENT_CLIENTID,
-				 "Failed to gethostname: %s (%d)",
-				 strerror(errno), errno);
-			return -ret;
-		}
+	ret = set_nodeid();
+	if (ret < 0) {
+		LogCrit(COMPONENT_CLIENTID, "Failed to set nodeid : %d", ret);
+		return ret;
 	}
 
-	len = strlen(host) + 6 + 1;
+	len = strlen(nodeid) + 6 + 1;
 	recov_oid = gsh_refstr_alloc(len);
 	gsh_refstr_get(recov_oid);
 
 	/* Can't overrun and shouldn't return EOVERFLOW or EINVAL */
-	(void)snprintf(recov_oid->gr_val, len, "%s_recov", host);
+	(void)snprintf(recov_oid->gr_val, len, "%s_recov", nodeid);
 	rcu_set_pointer(&rados_recov_oid, recov_oid);
 
 	ret = rados_kv_connect(&rados_recov_io_ctx, rados_kv_param.userid,

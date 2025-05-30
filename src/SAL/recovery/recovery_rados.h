@@ -48,9 +48,13 @@ struct rados_kv_parameter {
 	/** rados_cluster grace database OID */
 	char *grace_oid;
 	/** rados_cluster node_id */
-	int nodeid;
+	char *nodeid;
 };
 extern struct rados_kv_parameter rados_kv_param;
+extern bool numeric_nodeid;
+extern int node_id;
+extern char *nodeid;
+int set_nodeid(void);
 
 /* Callback for rados_kv_traverse */
 struct pop_args {

@@ -41,6 +41,8 @@ static rados_t clnt;
 rados_ioctx_t rados_recov_io_ctx;
 struct gsh_refstr *rados_recov_oid;
 struct gsh_refstr *rados_recov_old_oid;
+int node_id = -1;
+char *nodeid;
 
 struct rados_kv_parameter rados_kv_param;
 
@@ -55,7 +57,8 @@ static struct config_item rados_kv_params[] = {
 		      namespace),
 	CONF_ITEM_STR("grace_oid", 1, NI_MAXHOST, DEFAULT_RADOS_GRACE_OID,
 		      rados_kv_parameter, grace_oid),
-	CONF_ITEM_I32("nodeid", 0, INT32_MAX, -1, rados_kv_parameter, nodeid),
+	CONF_ITEM_STR("nodeid", 1, NI_MAXHOST, NULL, rados_kv_parameter,
+		      nodeid),
 	CONFIG_EOL
 };
 
@@ -398,28 +401,42 @@ void rados_kv_shutdown(void)
 		gsh_refstr_put(recov_oid);
 }
 
-int rados_kv_init(void)
+/* Set the nodeid -
+ *   if g_nodeid is set, its numeric, prepend "node"
+ *   if nodeid is set in ganesha.conf
+ *      check if its numeric value, if numeric prepend "node"
+ *      if non-numeric then use it as is
+ *   else use hostname as nodeid */
+int set_nodeid(void)
 {
-	int ret, node_id;
-	size_t len, host_len;
-	struct gsh_refstr *recov_oid = NULL, *old_oid = NULL;
-	char host[NI_MAXHOST];
+	int ret;
 	bool use_host_name = false;
+	bool prepend = false;
+	long maxlen = sysconf(_SC_HOST_NAME_MAX);
 
+	nodeid = gsh_malloc(maxlen);
+
+	if (rados_kv_param.nodeid) {
+		char *endptr;
+
+		node_id = strtol(rados_kv_param.nodeid, &endptr, 10);
+		if (errno || (*endptr != '\0'))
+			node_id = -1;
+	}
 	if (nfs_param.core_param.clustered) {
-		/* Get the nodeid from config */
-		node_id = rados_kv_param.nodeid;
 		/* check nodeid override with "I" option */
 		if (g_nodeid >= 0)
 			node_id = g_nodeid;
 		/* check if we need to use host-name */
-		if (node_id < 0)
+		if (!rados_kv_param.nodeid)
 			use_host_name = true;
+		else if (node_id >= 0)
+			prepend = true;
 	}
-	if (!use_host_name) {
-		ret = snprintf(host, sizeof(host), "node%d", node_id);
-
-		if (unlikely(ret >= sizeof(host))) {
+	if (prepend) {
+		/* numeric nodeid, prepend "node" */
+		ret = snprintf(nodeid, maxlen, "node%d", node_id);
+		if (unlikely(ret >= maxlen)) {
 			LogCrit(COMPONENT_CLIENTID, "node%d too long", node_id);
 			return -ENAMETOOLONG;
 		} else if (unlikely(ret < 0)) {
@@ -429,8 +446,9 @@ int rados_kv_init(void)
 				ret, strerror(ret));
 			return -ret;
 		}
-	} else {
-		ret = gethostname(host, sizeof(host));
+	} else if (use_host_name) {
+		/* no nodeid set in ganesha.conf, use hostname */
+		ret = gethostname(nodeid, maxlen);
 		if (ret) {
 			ret = errno;
 			LogCrit(COMPONENT_CLIENTID,
@@ -438,23 +456,47 @@ int rados_kv_init(void)
 				ret);
 			return -ret;
 		}
+	} else {
+		/* non-numeric nodeid set in ganesha.conf, use it as is */
+		ret = snprintf(nodeid, maxlen, "%s", rados_kv_param.nodeid);
+		if (unlikely(ret >= maxlen)) {
+			LogCrit(COMPONENT_CLIENTID, "%s too long",
+				rados_kv_param.nodeid);
+			return -ENAMETOOLONG;
+		} else if (unlikely(ret < 0)) {
+			ret = errno;
+			LogCrit(COMPONENT_CLIENTID,
+				"Unexpected return from snprintf %d error %s",
+				ret, strerror(ret));
+			return -ret;
+		}
 	}
+	LogEvent(COMPONENT_CLIENTID, "Nodeid : %s ", nodeid);
+	return 0;
+}
 
-	host_len = strlen(host);
-	len = host_len + 6 + 1;
+int rados_kv_init(void)
+{
+	int ret;
+	size_t len, nodeid_len;
+	struct gsh_refstr *recov_oid = NULL, *old_oid = NULL;
+
+	set_nodeid();
+	nodeid_len = strlen(nodeid);
+	len = nodeid_len + 6 + 1;
 	recov_oid = gsh_refstr_alloc(len);
 	gsh_refstr_get(recov_oid);
 
 	/* Can't overrun and shouldn't return EOVERFLOW or EINVAL */
-	(void)snprintf(recov_oid->gr_val, len, "%s_recov", host);
+	(void)snprintf(recov_oid->gr_val, len, "%s_recov", nodeid);
 	rcu_set_pointer(&rados_recov_oid, recov_oid);
 
-	len = host_len + 4 + 1;
+	len = nodeid_len + 4 + 1;
 	old_oid = gsh_refstr_alloc(len);
 	gsh_refstr_get(old_oid);
 
 	/* Can't overrun and shouldn't return EOVERFLOW or EINVAL */
-	(void)snprintf(old_oid->gr_val, len, "%s_old", host);
+	(void)snprintf(old_oid->gr_val, len, "%s_old", nodeid);
 	rcu_set_pointer(&rados_recov_old_oid, old_oid);
 
 	ret = rados_kv_connect(&rados_recov_io_ctx, rados_kv_param.userid,
@@ -751,17 +793,8 @@ out:
 
 int rados_kv_get_nodeid(char **pnodeid)
 {
-	char *nodeid = NULL;
-	int ret = 0;
-	/* return the nodeid if we have one */
-	if (rados_kv_param.nodeid >= 0) {
-		nodeid = gsh_malloc(16); /* int max value is 11 digits */
-		ret = snprintf(nodeid, 15, "node%d", rados_kv_param.nodeid);
-		if (ret < 16 && ret > 0)
-			ret = 0;
-	}
 	*pnodeid = nodeid;
-	return ret;
+	return 0;
 }
 
 struct nfs4_recovery_backend rados_kv_backend = {
