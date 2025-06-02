@@ -416,22 +416,41 @@ int set_nodeid(void)
 
 	nodeid = gsh_malloc(maxlen);
 
-	if (rados_kv_param.nodeid) {
+	/* check nodeid override with "I" option */
+	if (g_nodeid >= 0) {
+		node_id = g_nodeid;
+		prepend = true;
+		LogDebug(COMPONENT_CLIENTID,
+			 "Global nodeid, \"node\" will be prepended");
+	} else if (!rados_kv_param.nodeid) {
+		/* Need to use hostname */
+		use_host_name = true;
+		LogDebug(COMPONENT_CLIENTID,
+			 "No nodeid, hostname will be used");
+	} else {
+		/* Process the provided nodeid */
 		char *endptr;
 
+		errno = 0;
 		node_id = strtol(rados_kv_param.nodeid, &endptr, 10);
-		if (errno || (*endptr != '\0'))
-			node_id = -1;
-	}
-	if (nfs_param.core_param.clustered) {
-		/* check nodeid override with "I" option */
-		if (g_nodeid >= 0)
-			node_id = g_nodeid;
-		/* check if we need to use host-name */
-		if (!rados_kv_param.nodeid)
-			use_host_name = true;
-		else if (node_id >= 0)
-			prepend = true;
+		if (errno) {
+			LogDebug(COMPONENT_CLIENTID,
+				 "conversion failed, %d, using nodeid as is",
+				 errno);
+		} else {
+			if (*endptr != '\0') {
+				node_id = -1;
+				LogDebug(
+					COMPONENT_CLIENTID,
+					"Not a numeric string, using nodeid as is");
+			}
+			if (node_id >= 0) {
+				prepend = true;
+				LogDebug(
+					COMPONENT_CLIENTID,
+					"Numeric nodeid, \"node\" will be prepended");
+			}
+		}
 	}
 	if (prepend) {
 		/* numeric nodeid, prepend "node" */
