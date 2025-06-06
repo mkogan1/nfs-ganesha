@@ -878,7 +878,7 @@ int kmip_root_cb_func(struct exp_root_callback *cb,
 	struct io_fscrypt_setkey fscrypt_key;
 
 	if (!data->kmip_key_id) {
-		LogCrit(COMPONENT_FSAL, "keyset callback: export = %d, obj = %p; no kmip_key_id",
+		LogDebug(COMPONENT_FSAL, "keyset callback: export = %d, obj = %p; no kmip_key_id",
 			export->export_id, obj);
 		rc = 0;
 		goto Done;
@@ -900,11 +900,6 @@ int kmip_root_cb_func(struct exp_root_callback *cb,
 		goto Done;
 	}
 
-unsigned short x;	// XXX temp kill
-memcpy(&x, value + value_len - 2, 2);	// XXX temp kill
-LogCrit(COMPONENT_FSAL, "keyset callback: for kmip_key_id = %s, export = %d; len=%ld v[*]=%x",
-data->kmip_key_id, export->export_id, value_len, x);	// XXX temp kill
-
 	memset(&fscrypt_key, 0, sizeof fscrypt_key);
 	len = value_len;
 	if (len > MAX_FSCRYPT_KEY_SIZE) len = MAX_FSCRYPT_KEY_SIZE;
@@ -921,6 +916,9 @@ data->kmip_key_id, export->export_id, value_len, x);	// XXX temp kill
 		LogCrit(COMPONENT_FSAL, "keyset failed: kmip_key_id = %s, export = %d, error = %d/%d",
 			data->kmip_key_id, export->export_id, status.major, status.minor);
 		rc = EINVAL;
+	} else {
+		LogInfo(COMPONENT_FSAL, "keyset success: kmip_key_id = %s, export = %d",
+			data->kmip_key_id, export->export_id);
 	}
 
 Done:

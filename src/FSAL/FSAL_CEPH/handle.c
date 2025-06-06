@@ -3135,10 +3135,6 @@ static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
 	case FSCRYPT_SETKEY:
 	{
 		struct io_fscrypt_setkey *key = data;
-unsigned long long *x = (unsigned long long *)key->data;	// XXX temp remove
-LogCrit(COMPONENT_FSAL,	// XXX temp remove
-"ceph_fsal_control setkey: len=%d data=%#llx,%#llx,%#llx,%#llx",	// XXX temp remove
-key->keylen, x[0], x[1], x[3], x[3]);	// XXX temp remove
 		status = fsalstat(ERR_FSAL_NO_ERROR, 0);
 		retval = ceph_add_fscrypt_key(export->cmount,
 			key->data, key->keylen, NULL, 0);
