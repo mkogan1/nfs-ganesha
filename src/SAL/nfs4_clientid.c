@@ -1947,7 +1947,7 @@ int compare_client_record(struct gsh_buffdesc *buff1,
 
 	rc = cmp_sockaddr(&pkey1->cr_server_addr, &pkey2->cr_server_addr, true);
 
-	if (rc != 0)
+	if (rc == 0)
 		return rc;
 
 	return memcmp(pkey1->cr_client_val, pkey2->cr_client_val,
