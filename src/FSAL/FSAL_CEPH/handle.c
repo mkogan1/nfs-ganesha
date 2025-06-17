@@ -91,8 +91,7 @@ static void ceph_fsal_release(struct fsal_obj_handle *obj_hdl)
 	/* The private 'full' handle */
 	struct ceph_handle *obj =
 		container_of(obj_hdl, struct ceph_handle, handle);
-	struct ceph_export *export =
-		container_of(op_ctx->fsal_export, struct ceph_export, export);
+	struct ceph_export *export;
 
 	if (obj_hdl->type == REGULAR_FILE) {
 		fsal_status_t st;
@@ -109,8 +108,16 @@ static void ceph_fsal_release(struct fsal_obj_handle *obj_hdl)
 	GSH_AUTO_TRACEPOINT(fsal_ceph, ceph_release, TRACE_DEBUG,
 			    "CEPH release handle. fileid: {}", obj_hdl->fileid);
 
-	if (obj != export->root)
+	if (op_ctx) {
+		/* not in shutdown path */
+		export = container_of(op_ctx->fsal_export, struct ceph_export,
+				      export);
+		if (obj != export->root)
+			deconstruct_handle(obj);
+	} else {
+		/* shutdown path, release the handle anyway */
 		deconstruct_handle(obj);
+	}
 }
 
 /**

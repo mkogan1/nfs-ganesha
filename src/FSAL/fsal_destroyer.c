@@ -54,17 +54,20 @@ static void shutdown_handles(struct fsal_module *fsal)
 	struct glist_head *hi = NULL;
 	/* Next pointer in handle iteration */
 	struct glist_head *hn = NULL;
+	int hdl_count = 0;
 
 	if (glist_empty(&fsal->handles))
 		return;
 
-	LogDebug(COMPONENT_FSAL, "Extra file handles hanging around.");
+	LogWarn(COMPONENT_FSAL, "Extra file handles hanging around.");
 	glist_for_each_safe(hi, hn, &fsal->handles) {
 		struct fsal_obj_handle *h =
 			glist_entry(hi, struct fsal_obj_handle, handles);
 		LogDebug(COMPONENT_FSAL, "Releasing handle");
 		h->obj_ops->release(h);
+		hdl_count++;
 	}
+	LogWarn(COMPONENT_FSAL, "Released %d extra file handles.", hdl_count);
 }
 
 /**
