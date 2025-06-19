@@ -64,7 +64,8 @@ NFS_RDMA_Protocol_Versions(enum list, default [4.0])
     Supported NFS Version for NFS Over RDMA. By default, NFSv4.0 is enabled.
 
 Monitoring_Addr(IPv4 or IPv6 addr, default 0.0.0.0)
-    The address to which to bind for listening the monitoring port.
+    The address to which to bind for listening the monitoring port. If not
+    specified, then makes use of Bind_Addr config value.
 
 Monitoring_Port (uint16, range 0 to UINT16_MAX, default 9587)
     Port number used to export monitoring metrics.
