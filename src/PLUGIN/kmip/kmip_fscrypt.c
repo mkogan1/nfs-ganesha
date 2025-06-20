@@ -290,9 +290,11 @@ int kmip_export_extension_commit(void *node, void *link_mem, void *self_struct,
                          st->export_id);
 		return ++err_count;
 	}
-	cb = gsh_calloc(1, sizeof *cb);
-	cb->kmip_key_id = gsh_strdup(st->kmip_key_id);
-	add_to_export_callbacks(exp, &kmip_root_callback_sw, &cb->callback);
+	if (st->kmip_key_id) {
+		cb = gsh_calloc(1, sizeof *cb);
+		cb->kmip_key_id = gsh_strdup(st->kmip_key_id);
+		add_to_export_callbacks(exp, &kmip_root_callback_sw, &cb->callback);
+	}
 	put_gsh_export_config(exp);
 	return 0;
 }
