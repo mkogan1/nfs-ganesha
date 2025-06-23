@@ -59,6 +59,9 @@
 #endif
 #include "conf_url.h"
 #include "nfs_rpc_callback.h"
+#ifdef USE_MONITORING
+#include "monitoring.h"
+#endif
 
 /**
  * @brief Mutex protecting shutdown flag.
@@ -756,6 +759,9 @@ static void do_shutdown(void)
 	/* finalize RPC package */
 	Clean_RPC();
 
+#ifdef USE_MONITORING
+	monitoring__shutdown();
+#endif
 	LogEvent(COMPONENT_MAIN, "Shutting down RPC services");
 	(void)svc_shutdown(SVC_SHUTDOWN_FLAG_NONE);
 

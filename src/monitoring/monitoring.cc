@@ -464,6 +464,14 @@ void monitoring__init(const sockaddr_t *monitoring_addr,
 	initialized = true;
 }
 
+void monitoring__shutdown(void)
+{
+	static bool shutdown = false;
+	if (shutdown)
+		return;
+	exposer.stop();
+	shutdown = true;
+}
 void monitoring__dynamic_observe_nfs_request(const char *operation,
 					     nsecs_elapsed_t request_time,
 					     const char *version,

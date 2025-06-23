@@ -169,6 +169,9 @@ void monitoring__init(const sockaddr_t *monitoring_addr,
 		      uint16_t port,
 		      bool enable_dynamic_metrics);
 
+/* Shuts down monitoring module */
+void monitoring__shutdown(void);
+
 /*
  * The following two functions generate the following metrics,
  * exported both as total and per export.
