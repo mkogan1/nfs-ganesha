@@ -119,6 +119,9 @@ static struct config_item kmip_export_params[] = {
 	CONFIG_EOL
 };
 
+// this magic value means "ignore existing encryption status on dir, don't add key"
+#define MAGIC_KMIP_KEY_ID	"i-really-really-really-mean-this"
+
 int kmip_export_extension_commit(void *, void *, void *, struct config_error_type*);
 
 struct config_block kmip_export_extensions = {
@@ -290,9 +293,11 @@ int kmip_export_extension_commit(void *node, void *link_mem, void *self_struct,
                          st->export_id);
 		return ++err_count;
 	}
-	if (st->kmip_key_id) {
+	if (!st->kmip_key_id || strcmp(st->kmip_key_id, MAGIC_KMIP_KEY_ID)) {
 		cb = gsh_calloc(1, sizeof *cb);
-		cb->kmip_key_id = gsh_strdup(st->kmip_key_id);
+		if (st->kmip_key_id) {
+			cb->kmip_key_id = gsh_strdup(st->kmip_key_id);
+		}
 		add_to_export_callbacks(exp, &kmip_root_callback_sw, &cb->callback);
 	}
 	put_gsh_export_config(exp);
@@ -880,9 +885,18 @@ int kmip_root_cb_func(struct exp_root_callback *cb,
 	struct io_fscrypt_setkey fscrypt_key;
 
 	if (!data->kmip_key_id) {
-		LogDebug(COMPONENT_FSAL, "keyset callback: export = %d, obj = %p; no kmip_key_id",
-			export->export_id, obj);
-		rc = 0;
+		status = obj->obj_ops->control(obj, FSCRYPT_VERIFY_NOT_ENCRYPTED, NULL);
+		if (FSAL_IS_ERROR(status)) {
+			LogCrit(COMPONENT_FSAL,
+				"no kmip key; encrypted directory, export = %d, status = %d/%d",
+				export->export_id, status.major, status.minor);
+			rc = status.minor;
+			if (!rc) rc = EINVAL;
+		} else {
+			LogCrit(COMPONENT_FSAL,
+				"no kmip key; unencrypted directory passes muster, export = %d",
+				export->export_id);
+		}
 		goto Done;
 	}
 

@@ -390,6 +390,7 @@ struct fsal_dsh_ops;
 
 // control oeprations
 #define FSCRYPT_SETKEY ((((int)'f')<<24)+1)
+#define FSCRYPT_VERIFY_NOT_ENCRYPTED ((((int)'f')<<24)+2)
 #define MAX_FSCRYPT_KEY_SIZE 64
 struct io_fscrypt_setkey {
 	int keylen;

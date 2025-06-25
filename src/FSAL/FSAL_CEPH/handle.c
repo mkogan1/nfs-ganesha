@@ -3129,6 +3129,8 @@ static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
 	fsal_status_t status;
 	struct ceph_export *export =
 		container_of(op_ctx->fsal_export, struct ceph_export, export);
+	struct ceph_handle *myself =
+		container_of(obj_hdl, struct ceph_handle, handle);
 	int retval = 0;
 	switch(operation)
 	{
@@ -3140,6 +3142,12 @@ static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
 			key->data, key->keylen, NULL, 0);
 		if (retval < 0) {
 			status = ceph2fsal_error(retval);
+		}
+	} break;
+	case FSCRYPT_VERIFY_NOT_ENCRYPTED:
+	{
+		if (myself->is_encrypted) {
+			status = fsalstat(ERR_FSAL_NOTSUPP, ENODATA);
 		}
 	} break;
 	default:

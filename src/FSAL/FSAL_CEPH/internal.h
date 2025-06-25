@@ -163,6 +163,7 @@ struct ceph_handle {
 	uint64_t rw_serial;
 	uint64_t rw_max_len;
 #endif /* CEPH_PNFS */
+	char is_encrypted;
 };
 
 #ifdef CEPH_PNFS

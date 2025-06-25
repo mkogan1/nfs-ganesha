@@ -74,6 +74,7 @@ void construct_handle(const struct ceph_statx *stx, struct Inode *i,
 {
 	/* Pointer to the handle under construction */
 	struct ceph_handle *constructing = NULL;
+	char enctag[512];	// only 8 bytes max?
 
 	assert(i);
 
@@ -83,6 +84,7 @@ void construct_handle(const struct ceph_statx *stx, struct Inode *i,
 #ifdef CEPH_NOSNAP
 	constructing->key.hhdl.chk_snap = stx->stx_dev;
 #endif /* CEPH_NOSNAP */
+	constructing->is_encrypted = ceph_ll_is_encrypted(export->cmount, i, enctag) > 0;
 	constructing->key.hhdl.chk_fscid = export->fscid;
 	constructing->key.export_id = export->export.export_id;
 	constructing->i = i;
