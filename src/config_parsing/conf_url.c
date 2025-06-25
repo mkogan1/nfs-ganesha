@@ -369,9 +369,7 @@ int register_config(struct gsh_config_provider *config_p)
  */
 int unregister_config_locked(struct gsh_config_provider *config_p)
 {
-	PTHREAD_RWLOCK_wrlock(&url_rwlock);
 	glist_del(&config_p->link);
-	PTHREAD_RWLOCK_unlock(&url_rwlock);
 	return 0;
 }
 
@@ -380,10 +378,11 @@ int unregister_config_locked(struct gsh_config_provider *config_p)
  */
 int unregister_config(struct gsh_config_provider *config_p)
 {
+	int r;
 	PTHREAD_RWLOCK_wrlock(&url_rwlock);
-	glist_del(&config_p->link);
+	r = unregister_config_locked(config_p);
 	PTHREAD_RWLOCK_unlock(&url_rwlock);
-	return 0;
+	return r;
 }
 
 int read_plugin_config(config_file_t in_config, struct config_error_type *err_type)

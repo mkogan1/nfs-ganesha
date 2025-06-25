@@ -473,7 +473,7 @@ struct my_kmip_connection *timed_wait_kmip_busy(void)
 	pthread_mutex_lock(&kmip_connection_lock);
 	for (;;) {
 		kconn = saved_kconn;
-		if (!kmip_shutting_down && !BUSY(kconn)) {
+		if (!BUSY(kconn)) {
 			kconn->idle = 0;
 		} else {
 			kconn = 0;
