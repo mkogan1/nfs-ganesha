@@ -64,6 +64,13 @@
  */
 #define CEPH_SETXATTR_AS_ROOT ((void *)(-1UL))
 
+// struct ceph_fscrypt_key_identifier isn't exported so we cannot
+// know its exact internals.  However, the first
+// FSCRYPT_KEY_IDENTIFIER_SIZE bytes will be copied into policy_v2.
+struct my_ceph_fscrypt_key_identifier {
+	char raw[256];
+};
+
 /**
  * @brief Release an object
  *
@@ -3123,6 +3130,17 @@ static void ceph_fsal_handle_to_key(struct fsal_obj_handle *handle_pub,
 	fh_desc->len = sizeof(handle->key);
 }
 
+static void init_policy(struct my_ceph_fscrypt_key_identifier *kid,
+	struct fscrypt_policy_v2 *policy)
+{
+	memset(policy, 0, sizeof *policy);
+	policy->version = FSCRYPT_POLICY_V2;
+	policy->contents_encryption_mode = FSCRYPT_MODE_AES_256_XTS;
+	policy->filenames_encryption_mode = FSCRYPT_MODE_AES_256_CTS;
+	policy->flags = FSCRYPT_POLICY_FLAGS_PAD_32;
+	memcpy(policy->master_key_identifier, kid->raw, FSCRYPT_KEY_IDENTIFIER_SIZE);
+}
+
 static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
 				       int operation, void *data)
 {
@@ -3131,6 +3149,8 @@ static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
 		container_of(op_ctx->fsal_export, struct ceph_export, export);
 	struct ceph_handle *myself =
 		container_of(obj_hdl, struct ceph_handle, handle);
+	struct fscrypt_policy_v2 policy[1];
+	struct my_ceph_fscrypt_key_identifier kid[1];
 	int retval = 0;
 	switch(operation)
 	{
@@ -3139,10 +3159,20 @@ static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
 		struct io_fscrypt_setkey *key = data;
 		status = fsalstat(ERR_FSAL_NO_ERROR, 0);
 		retval = ceph_add_fscrypt_key(export->cmount,
-			key->data, key->keylen, NULL, 0);
+			key->data, key->keylen,
+                        (struct ceph_fscrypt_key_identifier *) kid, 0);
 		if (retval < 0) {
 			status = ceph2fsal_error(retval);
+			break;
 		}
+		init_policy(kid, policy);
+		retval = ceph_ll_set_fscrypt_policy_v2(export->cmount,
+			myself->i, policy);
+		if (retval < 0) {
+			status = ceph2fsal_error(retval);
+			break;
+		}
+		myself->is_encrypted = 1;
 	} break;
 	case FSCRYPT_VERIFY_NOT_ENCRYPTED:
 	{
