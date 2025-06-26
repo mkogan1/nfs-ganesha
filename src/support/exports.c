@@ -603,6 +603,76 @@ static void *pseudofs_client_init(void *link_mem, void *self_struct)
 }
 
 /**
+ * @brief Call any pending root callbacks posted by extensions.
+ *
+ * @param exp [IN] the export
+ *
+ * @return 0 if successful otherwise err.
+ */
+
+int process_export_root_callbacks(struct gsh_export *export,
+	struct fsal_obj_handle *obj)
+{
+	struct exp_root_callback *callback_p;
+	int my_status;
+
+	while ((callback_p = glist_first_entry(&export->exp_root_callbacks,
+		struct exp_root_callback, link))) {
+		glist_del(&callback_p->link);
+		my_status = callback_p->sw->cb(callback_p, obj);
+		if (my_status) {
+			LogCrit(COMPONENT_EXPORT,
+				"ExportId=%u callback callback failed rc=%d",
+				export->export_id, my_status);
+			return my_status;
+		}
+	}
+	return 0;
+}
+
+bool process_export_root_callbacks_cb(struct gsh_export * export, void *arg)
+{
+	int rc;
+	bool restore_op_ctx = false;
+	struct req_op_context op_context[1];
+	
+	if (!glist_empty(&export->exp_root_callbacks)) {
+		if (op_ctx == NULL || op_ctx->ctx_export != export) {
+			/* MDCACHE needs an opctx that points to this export
+			 */
+			get_gsh_export_ref(export);
+			init_op_context_simple(op_context, export,
+					       export->fsal_export);
+			restore_op_ctx = true;
+		}
+	}
+	rc = process_export_root_callbacks(export, export->exp_root_obj);
+	if (rc) {
+		export->config_gen = 0;
+		export->update_prune_unmount = true;
+	}
+
+	if (restore_op_ctx) {
+		/* And restore to the original op context */
+		release_op_context();
+	}
+	return true;
+}
+
+/**
+ * @brief Call all pending root callbacks on all exports.
+ *
+ * Called after rereading export configuration, some may be new.
+ * Call any pending root callbacks.  In case of error,
+ * mark the export for pruning.
+ */
+
+void process_extension_callbacks()
+{
+	foreach_gsh_export(process_export_root_callbacks_cb, true, NULL);
+}
+
+/**
  * @brief Commit this client block
  *
  * Validate "clients" token(s) and perms.  We enter with a client entry
@@ -2820,6 +2890,8 @@ int reread_exports(config_file_t in_config, struct config_error_type *err_type)
 		goto out;
 	}
 
+	process_extension_callbacks();
+
 	generation = get_config_generation(in_config);
 
 	/* Prune the pseudofs of all exports that will be unexported (defunct)
@@ -3067,7 +3139,6 @@ int init_export_root(struct gsh_export *export)
 	struct fsal_obj_handle *obj;
 	struct req_op_context op_context;
 	int my_status;
-	struct exp_root_callback *callback_p;
 
 	/* Get a ref to the export and initialize op_context */
 	get_gsh_export_ref(export);
@@ -3115,17 +3186,7 @@ int init_export_root(struct gsh_export *export)
 		goto out;
 	}
 
-	while ((callback_p = glist_first_entry(&export->exp_root_callbacks,
-		struct exp_root_callback, link))) {
-		glist_del(&callback_p->link);
-		my_status = callback_p->sw->cb(callback_p, obj);
-		if (my_status) {
-			LogCrit(COMPONENT_EXPORT,
-				"ExportId=%u callback callback failed rc=%d",
-				export->export_id, my_status);
-			goto out;
-		}
-	}
+	my_status = process_export_root_callbacks(export, obj);
 
 	if (!op_ctx_export_has_option_set(EXPORT_OPTION_MAXREAD_SET) ||
 	    !op_ctx_export_has_option_set(EXPORT_OPTION_MAXWRITE_SET) ||

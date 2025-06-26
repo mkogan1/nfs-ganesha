@@ -3176,6 +3176,7 @@ static fsal_status_t ceph_fsal_control(struct fsal_obj_handle *obj_hdl,
 	} break;
 	case FSCRYPT_VERIFY_NOT_ENCRYPTED:
 	{
+		status = fsalstat(ERR_FSAL_NO_ERROR, 0);
 		if (myself->is_encrypted) {
 			status = fsalstat(ERR_FSAL_NOTSUPP, ENODATA);
 		}
