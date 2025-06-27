@@ -626,8 +626,12 @@ struct my_kmip_connection * make_kmip_connect(void)
 	char portstring[8];
 
 	kconn = get_kmip_handle();
-	rc = 1;
+	rc = 0;
 	if (!kconn) {	// probably shutting down...
+		rc = 1;
+		LogCrit (COMPONENT_FSAL,
+			"no free kmip handles%s",
+			kmip_shutting_down ? ", shutting down" : "");
 	}
 	else if (NOT_CONNECTED(kconn)) {
 		int host_len = kmip_count_hosts(&kmip_settings);
@@ -650,6 +654,7 @@ struct my_kmip_connection * make_kmip_connect(void)
 		}
 	}
 	if (rc && kconn) {
+		LogCrit (COMPONENT_FSAL, "no available kmip hosts");
 		release_kmip_handle(kconn);
 		kconn = 0;
 	}
@@ -676,13 +681,13 @@ int kmip_get_keyvalue(char *unique_id, unsigned char **value_out, size_t *value_
 	char *response = NULL;
 	int response_size = 0;
 
+	*value_out = 0;
+	*value_size = 0;
 	kconn = make_kmip_connect();
 	if (!kconn) {
 		r = 1;
 		goto Done;
 	}
-	*value_out = 0;
-	*value_size = 0;
 
 	// build the request message
 
