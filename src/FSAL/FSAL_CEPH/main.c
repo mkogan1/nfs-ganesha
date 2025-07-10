@@ -134,7 +134,7 @@ static struct config_item ceph_items[] = {
 		       conf_path),
 	CONF_ITEM_MODE("umask", 0, ceph_fsal_module, fsal.fs_info.umask),
 	CONF_ITEM_BOOL("client_oc", false, ceph_fsal_module, client_oc),
-	CONF_ITEM_BOOL("async", true, ceph_fsal_module, async),
+	CONF_ITEM_BOOL("async", false, ceph_fsal_module, async),
 	CONF_ITEM_BOOL("zerocopy", true, ceph_fsal_module, zerocopy),
 	CONF_ITEM_BOOL("use_old_uuid", false, ceph_fsal_module, use_old_uuid),
 	CONFIG_EOL
