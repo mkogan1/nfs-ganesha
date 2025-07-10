@@ -909,7 +909,7 @@ int kmip_root_cb_func(struct exp_root_callback *cb,
 			rc = status.minor;
 			if (!rc) rc = EINVAL;
 		} else {
-			LogCrit(COMPONENT_FSAL,
+			LogEvent(COMPONENT_FSAL,
 				"no kmip key; unencrypted directory passes muster, export = %d",
 				export->export_id);
 		}
@@ -949,7 +949,7 @@ int kmip_root_cb_func(struct exp_root_callback *cb,
 			data->kmip_key_id, export->export_id, status.major, status.minor);
 		rc = EINVAL;
 	} else {
-		LogInfo(COMPONENT_FSAL, "keyset success: kmip_key_id = %s, export = %d",
+		LogEvent(COMPONENT_FSAL, "keyset success: kmip_key_id = %s, export = %d",
 			data->kmip_key_id, export->export_id);
 	}
 
