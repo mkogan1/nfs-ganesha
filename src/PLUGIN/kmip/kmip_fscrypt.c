@@ -40,6 +40,7 @@
 #include "kmip_bio.h"
 #include "kmip_memset.h"
 #include <openssl/err.h>
+#include <openssl/store.h>
 
 #define BUSY_TIMEOUT 31		// polling delay waiting for busy connection
 
@@ -52,6 +53,7 @@ struct kmip_params {
 	char *kmip_cert;
 	char *kmip_key;
 	char *kmip_ca;
+	char *kmip_chain_file;
 	char *kmip_user;
 	char *kmip_password;
 	int kmip_version;
@@ -77,7 +79,7 @@ int kmip_root_cb_free(struct exp_root_callback *);
 // XXX how to do more than one host?
 static struct config_item kmip_host_params[] = {
 	CONF_ITEM_STR("addr", 0, 512, "localhost.", kmip_host_param,
-			  name),
+			name),
 	CONF_ITEM_UI16("port", 1, UINT16_MAX, 5696,
 		       kmip_host_param, port), /* default is kmip */
 	CONFIG_EOL
@@ -100,6 +102,8 @@ static struct config_item kmip_params[] = {
 		kmip_key),
 	CONF_ITEM_PATH("ca", 1, MAXPATHLEN, NULL, kmip_params,
 		kmip_ca),
+	CONF_ITEM_PATH("cert_chain", 1, MAXPATHLEN, NULL, kmip_params,
+		kmip_chain_file),
 	CONF_ITEM_STR("user", 0, 512, NULL, kmip_params,
 		kmip_user),
 	CONF_ITEM_STR("password", 0, 512, NULL, kmip_params,
@@ -303,7 +307,7 @@ int kmip_export_extension_commit(void *node, void *link_mem, void *self_struct,
 	int err_count = 0;
 	exp = get_gsh_export(st->export_id);
 	if (!exp) {
-		 LogCrit(COMPONENT_CONFIG, "Export %d does not exist",
+		LogCrit(COMPONENT_CONFIG, "Export %d does not exist",
                          st->export_id);
 		return ++err_count;
 	}
@@ -430,6 +434,67 @@ int kmip_free_handle_stuff(struct my_kmip_connection *kconn)
 	return 0;
 }
 
+int load_certs(SSL_CTX *ctx, char *chain_file, 
+	STACK_OF(X509) **chain)
+{
+	int r = 0;
+	STACK_OF(X509) *certs = 0;
+	OSSL_STORE_CTX *store = NULL;
+	int ncerts = 0;
+
+	*chain = 0;
+	certs = sk_X509_new_null();
+	if (!certs) {
+		LogCrit(COMPONENT_FSAL,"Out of memory loading");
+		goto Done;
+	}
+	store = OSSL_STORE_open(chain_file, NULL, NULL, NULL, NULL);
+	if (!store) {
+		LogCrit(COMPONENT_FSAL,"Can't open file or uri for loading");
+		goto Done;
+	}
+	while (!OSSL_STORE_eof(store)) {
+		OSSL_STORE_INFO *info = OSSL_STORE_load(store);
+		if (!info) {
+			break;
+		}
+		int type = OSSL_STORE_INFO_get_type(info);
+		int ok = 1;
+		switch(type) {
+		case OSSL_STORE_INFO_CERT: {
+			ok = X509_add_cert(certs,
+				OSSL_STORE_INFO_get1_CERT(info),
+				X509_ADD_FLAG_DEFAULT);
+			ncerts += ok;
+			}; break;
+		default:
+			// ignore any other type
+			break;
+		}
+		OSSL_STORE_INFO_free(info);
+		if (!ok) {
+			LogCrit(COMPONENT_FSAL,
+				"Error reading entry from chain_file <%s>",
+				chain_file);
+			goto Done;
+		}
+	}
+	if (!ncerts) {
+		LogCrit(COMPONENT_FSAL,"Found no certs in chain file <%s>", chain_file);
+		goto Done;
+	}
+	*chain = certs;
+	certs = 0;
+	r = 1;
+Done:
+	if (store)
+		OSSL_STORE_close(store);
+	if (certs) {
+		sk_X509_pop_free(certs, X509_free);
+	}
+	return r;
+}
+
 /*
  * @brief retrieve an idle kmip handle.  It may or may not be connected.
  *
@@ -521,6 +586,7 @@ int setup_kmip_connect(struct my_kmip_connection *kconn, char *host, char *ports
 	int i;
 	size_t ns;
 	TextString *up;
+	STACK_OF(X509) *chain = 0;
 
 	// generic initialization
 
@@ -529,7 +595,7 @@ int setup_kmip_connect(struct my_kmip_connection *kconn, char *host, char *ports
 	kconn->ctx = SSL_CTX_new(TLS_client_method());
 	if (!kmip_settings.kmip_cert)
 		;
-	else if (SSL_CTX_use_certificate_file(kconn->ctx, kmip_settings.kmip_cert, SSL_FILETYPE_PEM) != 1) {
+	else if (SSL_CTX_use_certificate_chain_file(kconn->ctx, kmip_settings.kmip_cert) != 1) {
 		LogCrit(COMPONENT_FSAL,"Can't load client cert from %s", kmip_settings.kmip_cert);
 		log_ssl_errors();
 		r = 1;
@@ -547,6 +613,22 @@ int setup_kmip_connect(struct my_kmip_connection *kconn, char *host, char *ports
 		;
 	else if (SSL_CTX_load_verify_locations(kconn->ctx, kmip_settings.kmip_ca, NULL) != 1) {
 		LogCrit(COMPONENT_FSAL,"Can't load cacert %s", kmip_settings.kmip_ca);
+		log_ssl_errors();
+		r = 1;
+		goto Done;
+	}
+	if (!kmip_settings.kmip_chain_file)
+		;
+	else if (!load_certs(kconn->ctx, kmip_settings.kmip_chain_file, &chain)) {
+		LogCrit(COMPONENT_FSAL,"Can't load chain_file <%s>",
+			kmip_settings.kmip_chain_file);
+		log_ssl_errors();
+		r = 1;
+		goto Done;
+	}
+	else if (!SSL_CTX_set1_chain(kconn->ctx, chain)) {
+		LogCrit(COMPONENT_FSAL,"Can't set chain certs from <%s>",
+			kmip_settings.kmip_chain_file);
 		log_ssl_errors();
 		r = 1;
 		goto Done;
@@ -864,7 +946,7 @@ case KMIP_KEYFORMAT_X509: case KMIP_KEYFORMAT_EC_PRIVATE_KEY:
 	}
 	} break;
 default:
-	LogCrit(LOG_CRIT,"Unknown object at %p\n", pld->object);
+	LogCrit(LOG_CRIT,"Unknown object at %p", pld->object);
 }
 		}
 	r = 0;
@@ -1055,11 +1137,11 @@ void stop_kmip_reaper(void)
 {
 	void *thread_result;
 	if (pthread_cancel(kmip_reaper_thread) < 0) {
-		LogCrit(COMPONENT_FSAL, "Can't cancel reaper %d\n", errno);
+		LogCrit(COMPONENT_FSAL, "Can't cancel reaper %d", errno);
 		return;
 	}
 	if (pthread_join(kmip_reaper_thread, &thread_result) < 0) {
-		LogCrit(COMPONENT_FSAL, "Can't join reaper %d\n", errno);
+		LogCrit(COMPONENT_FSAL, "Can't join reaper %d", errno);
 		return;
 	}
 	(void) thread_result;
