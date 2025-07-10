@@ -41,7 +41,7 @@
 #include "kmip_memset.h"
 #include <openssl/err.h>
 
-#define IDLE_TIMEOUT	13	/* reap idle connections after 13 s */
+#define BUSY_TIMEOUT 31		// polling delay waiting for busy connection
 
 struct kmip_host_param {
 	struct glist_head link;
@@ -55,6 +55,7 @@ struct kmip_params {
 	char *kmip_user;
 	char *kmip_password;
 	int kmip_version;
+	uint32_t kmip_timeout;
 	struct glist_head kmip_host;
 };
 
@@ -105,6 +106,8 @@ static struct config_item kmip_params[] = {
 		kmip_password),
 	CONF_ITEM_TOKEN("protocol", KMIP_1_1, kmip_protocols, kmip_params,
 		kmip_version),
+	CONF_ITEM_UI32("idle_timeout", 1, 3600, 7, kmip_params,
+		kmip_timeout),
 	CONF_ITEM_BLOCK_MULT("HOST", kmip_host_params, kmip_host_init,
 			kmip_host_commit, kmip_params,
 			kmip_host),
@@ -480,7 +483,7 @@ struct my_kmip_connection *timed_wait_kmip_busy(void)
 	struct my_kmip_connection *kconn;
 	struct timespec now_ts[1];
 	clock_gettime(CLOCK_REALTIME, now_ts);
-	now_ts->tv_sec += IDLE_TIMEOUT*2;
+	now_ts->tv_sec += BUSY_TIMEOUT;
 	pthread_mutex_lock(&kmip_connection_lock);
 	for (;;) {
 		kconn = saved_kconn;
@@ -987,17 +990,17 @@ void * kmip_connection_reaper(void *a)
 {
 	useconds_t delay;
 	(void)a;
-	struct timeval idle[1], now[1], was[1];
+	struct timeval idle[1], now[1], was[1], left[1];
 	int saved;
 struct my_kmip_connection *kconn;
-	idle->tv_sec = IDLE_TIMEOUT;
-	idle->tv_usec = 0;
 	for (;; usleep(delay)) {
-		delay = IDLE_TIMEOUT * 100000;
-		if (NOT_CONNECTED(saved_kconn) || BUSY(saved_kconn))
+		delay = kmip_settings.kmip_timeout * (1000000/2);
+		if (BUSY(saved_kconn) || NOT_CONNECTED(saved_kconn))
 			continue;
 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &saved);
 		pthread_mutex_lock(&kmip_connection_lock);
+		idle->tv_sec = kmip_settings.kmip_timeout;
+		idle->tv_usec = 0;
 		gettimeofday(now, 0);
 		timersub(now, idle, was);
 		kconn = saved_kconn;
@@ -1005,6 +1008,8 @@ struct my_kmip_connection *kconn;
 			kconn = 0;
 		} else if (timerisset(kconn->lastuse) &&
 			!timercmp(kconn->lastuse, was, <)) {
+			timersub(kconn->lastuse, was, left);
+			delay = left->tv_sec * 1000000 + left->tv_usec;
 			kconn = 0;
 		} else {
 			kconn->idle = 0;
