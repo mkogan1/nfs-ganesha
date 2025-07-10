@@ -41,8 +41,6 @@
 #include "kmip_memset.h"
 #include <openssl/err.h>
 
-int protocol_version = KMIP_1_0;
-
 #define IDLE_TIMEOUT	13	/* reap idle connections after 13 s */
 
 struct kmip_host_param {
@@ -56,6 +54,7 @@ struct kmip_params {
 	char *kmip_ca;
 	char *kmip_user;
 	char *kmip_password;
+	int kmip_version;
 	struct glist_head kmip_host;
 };
 
@@ -83,6 +82,16 @@ static struct config_item kmip_host_params[] = {
 	CONFIG_EOL
 };
 
+static struct config_item_list kmip_protocols[] = {
+	CONFIG_LIST_TOK("1.0", KMIP_1_0),
+	CONFIG_LIST_TOK("1.1", KMIP_1_1),
+	CONFIG_LIST_TOK("1.2", KMIP_1_2),
+	CONFIG_LIST_TOK("1.3", KMIP_1_3),
+	CONFIG_LIST_TOK("1.4", KMIP_1_4),
+	CONFIG_LIST_TOK("2.0", KMIP_2_0),
+	CONFIG_LIST_EOL
+};
+
 static struct config_item kmip_params[] = {
 	CONF_ITEM_PATH("cert", 1, MAXPATHLEN, NULL, kmip_params,
 		kmip_cert),
@@ -94,12 +103,14 @@ static struct config_item kmip_params[] = {
 		kmip_user),
 	CONF_ITEM_STR("password", 0, 512, NULL, kmip_params,
 		kmip_password),
-
+	CONF_ITEM_TOKEN("protocol", KMIP_1_1, kmip_protocols, kmip_params,
+		kmip_version),
 	CONF_ITEM_BLOCK_MULT("HOST", kmip_host_params, kmip_host_init,
 			kmip_host_commit, kmip_params,
 			kmip_host),
 	CONFIG_EOL
 };
+
 
 struct config_block kmip_block = {
 	.dbus_interface_name = "org.ganesha.nfsd.config.fscrypt.kmip",
@@ -561,7 +572,7 @@ int setup_kmip_connect(struct my_kmip_connection *kconn, char *host, char *ports
 
 	// setup kmip
 
-	kmip_init(kconn->kmip_ctx, NULL, 0, protocol_version);
+	kmip_init(kconn->kmip_ctx, NULL, 0, kmip_settings.kmip_version);
 	kconn->need_to_free_kmip = 1;
 	kconn->buffer_blocks = 1;
 	kconn->buffer_block_size = 1024;
