@@ -2511,7 +2511,6 @@ static struct config_block unrelax_export_param = {
 	.blk_desc.u.blk.init = noop_conf_init,
 	.blk_desc.u.blk.params = unrelax_export_params,
 	.blk_desc.u.blk.commit = noop_conf_commit,
-	.blk_desc.u.blk.display = export_display
 };
 
 /**
