@@ -3187,6 +3187,16 @@ int init_export_root(struct gsh_export *export)
 
 	my_status = process_export_root_callbacks(export, obj);
 
+	if (my_status) {
+		fsal_status = fsalstat(ERR_FSAL_PERM, my_status);
+
+		LogCrit(COMPONENT_EXPORT,
+			"Root callbacks failed, ExportId=%u Path=%s FSAL_ERROR=(%s,%u)",
+			export->export_id, CTX_FULLPATH(op_ctx),
+			msg_fsal_err(fsal_status.major), fsal_status.minor);
+		goto out;
+	}
+
 	if (!op_ctx_export_has_option_set(EXPORT_OPTION_MAXREAD_SET) ||
 	    !op_ctx_export_has_option_set(EXPORT_OPTION_MAXWRITE_SET) ||
 	    !op_ctx_export_has_option_set(EXPORT_OPTION_PREFREAD_SET) ||
