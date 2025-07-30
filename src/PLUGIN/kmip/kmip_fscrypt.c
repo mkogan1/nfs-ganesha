@@ -46,8 +46,10 @@
 
 struct kmip_host_param {
 	struct glist_head link;
-	char *name;
+	char *name;		// connect to this
 	unsigned short port;
+	char *servername;	// via "sni"; indicate want this
+	char *verify_hostname;	// verify this in server cert that comes back
 };
 struct kmip_params {
 	char *kmip_cert;
@@ -76,12 +78,15 @@ int kmip_root_cb_func(struct exp_root_callback *,
 	struct fsal_obj_handle *obj);
 int kmip_root_cb_free(struct exp_root_callback *);
 
-// XXX how to do more than one host?
 static struct config_item kmip_host_params[] = {
 	CONF_ITEM_STR("addr", 0, 512, "localhost.", kmip_host_param,
 			name),
 	CONF_ITEM_UI16("port", 1, UINT16_MAX, 5696,
 		       kmip_host_param, port), /* default is kmip */
+	CONF_ITEM_STR("servername", 0, 512, NULL, kmip_host_param,
+			servername),
+	CONF_ITEM_STR("verify_hostname", 0, 512, NULL, kmip_host_param,
+			verify_hostname),
 	CONFIG_EOL
 };
 
@@ -580,13 +585,16 @@ LogCrit(COMPONENT_FSAL,"timed_wait_kmip_busy: connection hung - go boom now?");
  * @return 1 on failure
  */
 
-int setup_kmip_connect(struct my_kmip_connection *kconn, char *host, char *portstring)
+int setup_kmip_connect(struct my_kmip_connection *kconn,
+	struct kmip_host_param *host_p)
 {
 	int r = 666;
 	int i;
 	size_t ns;
 	TextString *up;
 	STACK_OF(X509) *chain = 0;
+	char portstring[8];
+	const char *hostnm, *servername, *verify_hostname;
 
 	// generic initialization
 
@@ -642,14 +650,44 @@ int setup_kmip_connect(struct my_kmip_connection *kconn, char *host, char *ports
 		goto Done;
 	}
 	BIO_get_ssl(kconn->bio, &kconn->ssl);
+
+	BIO_set_conn_hostname(kconn->bio, host_p->name);
+	snprintf(portstring, sizeof portstring, "%d",
+		host_p->port);
+	BIO_set_conn_port(kconn->bio, portstring);
+	hostnm = BIO_get_conn_hostname(kconn->bio);
+
+	servername = host_p->servername;
+	verify_hostname = host_p->verify_hostname;
+	if (servername && !*servername) {
+	} else {
+		if (!servername)
+			servername = hostnm;
+		if (!SSL_set_tlsext_host_name(kconn->ssl, servername)) {
+			LogCrit(COMPONENT_FSAL,"SSL_set_tlsext_host_name failed");
+			log_ssl_errors();
+			r = 1;
+			goto Done;
+		}
+	}
+	if (verify_hostname && !*verify_hostname) {
+	} else {
+		if (!verify_hostname)
+			verify_hostname = *servername ? servername : hostnm;
+		if (!SSL_set1_host(kconn->ssl, verify_hostname)) {
+			LogCrit(COMPONENT_FSAL,"SSL_set1_host failed");
+			log_ssl_errors();
+			r = 1;
+			goto Done;
+		}
+	}
+
 	SSL_set_mode(kconn->ssl, SSL_MODE_AUTO_RETRY);
 
 	// connect to kmip host
 
-	BIO_set_conn_hostname(kconn->bio, host);
-	BIO_set_conn_port(kconn->bio, portstring);
 	if (BIO_do_connect(kconn->bio) != 1) {
-		LogCrit(COMPONENT_FSAL,"BIO_do_connect failed to %s %s", host, portstring);
+		LogCrit(COMPONENT_FSAL,"BIO_do_connect failed to %s %s", hostnm, portstring);
 		log_ssl_errors();
 		r = 1;
 		goto Done;
@@ -718,8 +756,6 @@ struct my_kmip_connection * make_kmip_connect(void)
 {
 	struct my_kmip_connection *kconn;
 	int i, j, rc;
-	char *host;
-	char portstring[8];
 
 	kconn = get_kmip_handle();
 	rc = 0;
@@ -736,17 +772,14 @@ struct my_kmip_connection * make_kmip_connect(void)
 			if (j >= host_len) j = 0;
 			struct kmip_host_param *host_p = kmip_nth_host(
 				&kmip_settings, j);
-			host = host_p->name;
-			snprintf(portstring, sizeof portstring, "%d",
-				host_p->port);
-			rc = setup_kmip_connect(kconn, host, portstring);
+			rc = setup_kmip_connect(kconn, host_p);
 			if (!rc) {
 				saved_kmip_host_index = j;
 				break;
 			}
 			LogCrit (COMPONENT_FSAL,
-				"kmip can't connect to %s:%s",
-				host, portstring);
+				"kmip can't connect to %s:%d",
+				host_p->name, host_p->port);
 		}
 	}
 	if (rc && kconn) {
