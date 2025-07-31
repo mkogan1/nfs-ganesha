@@ -3194,6 +3194,8 @@ int init_export_root(struct gsh_export *export)
 			"Root callbacks failed, ExportId=%u Path=%s FSAL_ERROR=(%s,%u)",
 			export->export_id, CTX_FULLPATH(op_ctx),
 			msg_fsal_err(fsal_status.major), fsal_status.minor);
+		obj->obj_ops->release(obj);
+		obj = 0;
 		goto out;
 	}
 
