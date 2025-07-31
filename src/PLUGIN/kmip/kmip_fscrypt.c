@@ -791,7 +791,6 @@ struct my_kmip_connection * make_kmip_connect(void)
 	kconn = get_kmip_handle();
 	rc = 0;
 	if (!kconn) {	// probably shutting down...
-		rc = 1;
 		LogCrit (COMPONENT_FSAL,
 			"no free kmip handles%s",
 			kmip_shutting_down ? ", shutting down" : "");
@@ -802,9 +801,10 @@ struct my_kmip_connection * make_kmip_connect(void)
 	}
 	if (NOT_CONNECTED(kconn)) {
 		int host_len = kmip_count_hosts(&kmip_settings);
+		rc = 1;
 		j = saved_kmip_host_index;
-		for (i = 0; i < host_len; ++i, ++j) {
-			if (j >= host_len) j = 0;
+		for (i = 0; i < host_len; ++i) {
+			j = (saved_kmip_host_index + i) % host_len;
 			struct kmip_host_param *host_p = kmip_nth_host(
 				&kmip_settings, j);
 			rc = setup_kmip_connect(kconn, host_p);
