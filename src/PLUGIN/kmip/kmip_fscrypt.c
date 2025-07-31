@@ -69,14 +69,17 @@ struct export_kmip {
 };
 
 struct kmip_params kmip_settings;
+bool need_kmip_reload = FALSE;
 
 void *kmip_host_init(void *, void *);
+static void *kmip_block_init(void *link_mem, void *self_struct);
 int kmip_host_commit(void *, void *, void *, struct config_error_type *);
 int kmip_load_export_extension(struct export_extension *,
 		config_file_t, struct config_error_type *);
 int kmip_root_cb_func(struct exp_root_callback *,
 	struct fsal_obj_handle *obj);
 int kmip_root_cb_free(struct exp_root_callback *);
+static void flush_kconns();
 
 static struct config_item kmip_host_params[] = {
 	CONF_ITEM_STR("addr", 0, 512, "localhost.", kmip_host_param,
@@ -129,10 +132,11 @@ struct config_block kmip_block = {
 	.blk_desc.name = "KMIP",
 	.blk_desc.type = CONFIG_BLOCK,
 	.blk_desc.flags = CONFIG_UNIQUE,
-	.blk_desc.u.blk.init = noop_conf_init,
+	.blk_desc.u.blk.init = kmip_block_init,
 	.blk_desc.u.blk.params = kmip_params,
 	.blk_desc.u.blk.commit = noop_conf_commit
 };
+
 
 static struct config_item kmip_export_params[] = {
 	CONF_ITEM_STR("kmip_key_id", 0, 512, NULL, export_kmip,
@@ -244,13 +248,33 @@ void *kmip_host_init(void *link_mem, void *self_struct)
 int kmip_host_commit(void *node, void *link_mem, void *self_struct,
 	struct config_error_type * err_type)
 {
+	// link_mem will be &kmip_settings.kmip_host
+	// self_struct will be a host_p
 	struct glist_head *host_list = link_mem;
 	struct kmip_host_param *host_p = self_struct;
-	if (glist_null(host_list)) {
-		glist_init(host_list);
-	}
 	glist_add_tail(host_list, &host_p->link);
 	return 0;
+}
+
+static void *kmip_block_init(void *link_mem, void *self_struct)
+{
+	// exactly one of link_mem self_struct will be &kmip_settings
+	assert(link_mem != NULL || self_struct != NULL);
+	struct kmip_params *settings = self_struct;
+
+	if (link_mem == NULL) {	// call#1 0, v
+		if (glist_null(&settings->kmip_host)) {
+			glist_init(&settings->kmip_host);
+		} else {
+			free_host_params();
+			flush_kconns();
+		}
+		return self_struct;
+	}
+	else if (self_struct == NULL) {	// call#2
+		return link_mem;
+	} else
+		return NULL;
 }
 
 int kmip_init_block(config_file_t config_struct,
@@ -261,11 +285,6 @@ int kmip_init_block(config_file_t config_struct,
 	rc = load_config_from_parse(config_struct, &kmip_block,
 				     &kmip_settings, true,
 				     err_type);
-
-	if (glist_null(&kmip_settings.kmip_host)) {
-		glist_init(&kmip_settings.kmip_host);
-	}
-
 	/*
 	 * All kmip options are optional, so no kmip block
 	 * is not necessarily bad.
@@ -334,15 +353,20 @@ int kmip_export_extension_commit(void *node, void *link_mem, void *self_struct,
 int kmip_load_export_extension(struct export_extension *ex,
 config_file_t in_config, struct config_error_type *err_type)
 {
-	int rc;
+	int rc, rc0 = 0;
 	struct export_kmip st[1];
  __attribute__((unused))        // don't need for now; optimizer will delete
 	struct kmip_export_extension *extension_st;
 	extension_st = container_of(ex, struct kmip_export_extension, extension);
+	// except during init, expicitly reread kmip block
+	if (need_kmip_reload) {
+		rc0 = kmip_init_block(in_config, err_type);
+	}
+	need_kmip_reload = TRUE;
 	memset(st, 0, sizeof *st);
 	rc = load_config_from_parse(in_config,
 		&kmip_export_extensions, st, false, err_type);
-	return rc;
+	return rc ? rc : rc0;
 }
 
 /**
@@ -396,6 +420,7 @@ struct my_kmip_connection {
 	uint8 *encoding;
 	int idle;
 	struct timeval lastuse[1];
+	int poison;
 };
 struct my_kmip_connection saved_kconn[1];
 pthread_mutex_t kmip_connection_lock;
@@ -436,6 +461,7 @@ int kmip_free_handle_stuff(struct my_kmip_connection *kconn)
 		kconn->ctx = 0;
 	}
 	kconn->idle = 1;
+	kconn->poison = 0;
 	return 0;
 }
 
@@ -572,6 +598,11 @@ LogCrit(COMPONENT_FSAL,"timed_wait_kmip_busy: connection hung - go boom now?");
 	}
 	pthread_mutex_unlock(&kmip_connection_lock);
 	return kconn;
+}
+
+static void flush_kconns()
+{
+	saved_kconn->poison = 1;
 }
 
 /*
@@ -764,8 +795,12 @@ struct my_kmip_connection * make_kmip_connect(void)
 		LogCrit (COMPONENT_FSAL,
 			"no free kmip handles%s",
 			kmip_shutting_down ? ", shutting down" : "");
+		return 0;
 	}
-	else if (NOT_CONNECTED(kconn)) {
+	if (kconn->poison) {
+		kmip_free_handle_stuff(kconn);
+	}
+	if (NOT_CONNECTED(kconn)) {
 		int host_len = kmip_count_hosts(&kmip_settings);
 		j = saved_kmip_host_index;
 		for (i = 0; i < host_len; ++i, ++j) {
@@ -1121,7 +1156,7 @@ struct my_kmip_connection *kconn;
 		kconn = saved_kconn;
 		if (BUSY(kconn) || NOT_CONNECTED(kconn)) {
 			kconn = 0;
-		} else if (timerisset(kconn->lastuse) &&
+		} else if (!kconn->poison && timerisset(kconn->lastuse) &&
 			!timercmp(kconn->lastuse, was, <)) {
 			timersub(kconn->lastuse, was, left);
 			delay = left->tv_sec * 1000000 + left->tv_usec;
@@ -1209,13 +1244,17 @@ MODULE_INIT void init(void)
 MODULE_FINI void finish(void)
 {
 	LogDebug(COMPONENT_FSAL, "kmip unload");
+	struct my_kmip_connection *kconn;
 
 	kmip_shutting_down = 1;
 	remove_export_extension(&kmip_export_extension_st.extension);
 	if (unregister_config_locked(&kmip_plugin_static_t.config) != 0)
 		fprintf(stderr, "KMIP module failed to unregister");
 	stop_kmip_reaper();
-	(void) timed_wait_kmip_busy();
+	kconn = timed_wait_kmip_busy();
+	if (kconn && !NOT_CONNECTED(kconn)) {
+		kmip_free_handle_stuff(kconn);
+	}
 	destroy_mutexes();
 	free_host_params();
 }
