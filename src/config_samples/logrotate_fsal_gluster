@@ -1,4 +1,5 @@
 /var/log/ganesha/ganesha-gfapi.log {
+    su ganesha ganesha
     weekly
     rotate 52
     copytruncate
