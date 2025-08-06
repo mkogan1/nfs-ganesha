@@ -2081,6 +2081,10 @@ typedef struct BIND_CONN_TO_SESSION4res BIND_CONN_TO_SESSION4res;
 #define EXCHGID4_FLAG_UPD_CONFIRMED_REC_A 0x40000000
 #define EXCHGID4_FLAG_CONFIRMED_R 0x80000000
 
+#define EXCHGID4_FLAG_TLS_ESTABLISHED 0x00000001
+#define EXCHGID4_FLAG_MTLS_ESTABLISHED 0x00000002
+#define EXCHGID4_FLAG_TLS_MASK 0x00000003
+
 struct state_protect_ops4 {
 	struct bitmap4 spo_must_enforce;
 	struct bitmap4 spo_must_allow;

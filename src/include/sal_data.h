@@ -856,6 +856,9 @@ struct nfs_client_record_t {
 				     different pNFS flags as
 				     disjoint. Linux client stupidity
 				     forces us to do so. */
+	uint32_t cr_extra_flags; /*< used in case of same client connection
+				   biffurcation.
+				   Used in TLS/MTLS/NON-TLS from same client.*/
 	int cr_client_val_len; /*< Length of owner */
 	char cr_client_val[]; /*< Supplied co_owner */
 };

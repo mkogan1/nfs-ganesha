@@ -62,6 +62,10 @@
 #include "server_stats.h"
 #include "uid2grp.h"
 
+#ifdef USE_TLS
+#include "gsh_tls.h"
+#endif
+
 #include "gsh_lttng/gsh_lttng.h"
 #if defined(USE_LTTNG) && !defined(LTTNG_PARSING)
 #include "gsh_lttng/generated_traces/nfs_rpc.h"
@@ -863,6 +867,27 @@ static enum xprt_stat nfs_rpc_process_request(nfs_request_t *reqdata,
 	 * should be returned to the dispatcher.
 	 */
 	auth_rc = svc_auth_authenticate(&reqdata->svc, &no_dispatch);
+
+#ifdef USE_TLS
+	/* Handle AUTH_TLS probe specifically */
+	if (xprt->xp_tls.tls_pending) {
+		xprt->xp_tls.tls_pending = false;
+		if (auth_rc == AUTH_OK) {
+			/* This is a valid AUTH_TLS probe */
+			LogCrit(COMPONENT_CONFIG,
+				"Processed AUTH_TLS probe on fd %"
+				PRId32 , xprt->xp_fd);
+			return SVC_STAT(xprt);
+		} else {
+			/* Invalid AUTH_TLS probe */
+			LogCrit(COMPONENT_CONFIG,
+				"Invalid AUTH_TLS probe, auth_result=%"
+				PRId32 , auth_rc);
+			return svcerr_auth(&reqdata->svc, auth_rc);
+		}
+	}
+#endif
+
 	if (auth_rc != AUTH_OK) {
 		LogInfo(COMPONENT_DISPATCH,
 			"Could not authenticate request... rejecting with AUTH_STAT=%s",
@@ -1280,7 +1305,38 @@ retry_after_drc_suspend:
 			auth_failure(reqdata, AUTH_TOOWEAK);
 			goto freeargs;
 		}
+#if USE_TLS
+		/* Test if export requires TLS  */
+		if ((op_ctx->export_perms.options & EXPORT_OPTION_TLS) != 0) {
+			if (!(xprt->xp_tls.tls_established)) {
+				LogInfoAlt(COMPONENT_DISPATCH, COMPONENT_EXPORT,
+				"[TLS] NFS auth not allowed on Export_Id %"
+				PRId32 " %s for client %s TLS",
+				op_ctx->ctx_export->export_id,
+				CTX_PSEUDOPATH(op_ctx),
+				op_ctx->client ? op_ctx->client->hostaddr_str
+				: "unknown client");
+				auth_failure(reqdata, AUTH_TOOWEAK);
+				goto freeargs;
+			}
+		}
 
+		/* Test if export requires TLS  */
+		if ((op_ctx->export_perms.options & EXPORT_OPTION_MTLS) != 0) {
+			if (!(xprt->xp_tls.tls_established) ||
+					!(xprt->xp_tls.mtls)) {
+				LogInfoAlt(COMPONENT_DISPATCH, COMPONENT_EXPORT,
+				"[TLS] NFS auth not allowed on Export_Id %"
+				PRId32 " %s for client %s MTLS",
+				op_ctx->ctx_export->export_id,
+				CTX_PSEUDOPATH(op_ctx),
+				op_ctx->client ? op_ctx->client->hostaddr_str
+				: "unknown client");
+				auth_failure(reqdata, AUTH_TOOWEAK);
+				goto freeargs;
+			}
+		}
+#endif
 		if ((op_ctx->export_perms.options & EXPORT_OPTION_NFSV3) == 0) {
 			LogInfoAlt(
 				COMPONENT_DISPATCH, COMPONENT_EXPORT,

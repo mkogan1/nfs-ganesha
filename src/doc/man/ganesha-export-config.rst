@@ -42,7 +42,7 @@ Anonymous_gid(anonid, range INT32_MIN to UINT32_MAX, default -2)
 
 SecType(enum list, default [none, sys])
     Possible values:
-        none, sys, krb5, krb5i, krb5p
+        none, sys, krb5, krb5i, krb5p, tls, mtls
 
 PrivilegedPort(bool, default false)
 
@@ -345,7 +345,7 @@ Transports(enum list, values [UDP, TCP, RDMA], default [TCP])
 
 SecType(enum list, default [none, sys, krb5, krb5i, krb5p])
     Possible values:
-        none, sys, krb5, krb5i, krb5p
+        none, sys, krb5, krb5i, krb5p, tls, mtls
 
 PrivilegedPort(bool, default false)
 

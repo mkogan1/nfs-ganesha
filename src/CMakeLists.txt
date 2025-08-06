@@ -507,6 +507,42 @@ IF(MOOSHIKA_PREFIX)
   set(ENV{PKG_CONFIG_PATH} "${PKG_CONFIG_PATH}:${MOOSHIKA_PREFIX}/lib/pkgconfig")
 ENDIF()
 
+# TLS configuration options
+option(USE_TLS "Enable TLS support" OFF)
+option(USE_OPENSSL "Use OpenSSL as TLS backend" OFF)
+option(USE_GNUTLS "Use GNUTLS as TLS backend" OFF)
+
+# Find TLS libraries based on configuration
+if(USE_TLS)
+  set(TLS_COMPONENTS "")
+
+  if(USE_OPENSSL)
+    list(APPEND TLS_COMPONENTS "openssl")
+    set(USE_GNUTLS OFF)
+  endif(USE_OPENSSL)
+
+  if(USE_GNUTLS)
+    list(APPEND TLS_COMPONENTS "gnutls")
+    set(USE_OPENSSL OFF)
+  endif(USE_GNUTLS)
+
+  if( NOT USE_OPENSSL AND NOT USE_GNUTLS)
+    list(APPEND TLS_COMPONENTS "openssl")
+    list(APPEND TLS_COMPONENTS "gnutls")
+  endif()
+
+  find_package(TLS REQUIRED ${TLS_COMPONENTS})
+
+  # Add TLS libraries to system libraries
+  if (TLS_FOUND)
+    set(SYSTEM_LIBRARIES ${TLS_LIBRARIES} ${SYSTEM_LIBRARIES})
+    include_directories(${TLS_INCLUDE_DIRS})
+  else (TLS_FOUND)
+    set(USE_TLS OFF)
+  endif(TLS_FOUND)
+endif(USE_TLS)
+
+
 if(USE_NFS_RDMA OR USE_9P_RDMA)
   check_library_exists(rdmacm rdma_create_qp "" RDMACM_FOUND)
   check_library_exists(ibverbs ibv_alloc_pd "" IBVERBS_FOUND)
@@ -1450,6 +1486,10 @@ message(STATUS "RADOS_URLS = ${RADOS_URLS}")
 message(STATUS "USE_CUNIT = ${USE_CUNIT}")
 message(STATUS "USE_UNWIND = ${USE_UNWIND}")
 message(STATUS "SANITIZE_ADDRESS = ${SANITIZE_ADDRESS}")
+message(STATUS "USE_TLS = ${USE_TLS}")
+message(STATUS "USE_OPENSSL = ${USE_OPENSSL}")
+message(STATUS "USE_GNUTLS = ${USE_GNUTLS}")
+message(STATUS "TLS_BACKEND = ${TLS_BACKEND}")
 
 set(USE_CB_SIMULATOR ${USE_CB_SIMULATOR}
   CACHE BOOL
@@ -1639,6 +1679,25 @@ if(${ALLOCATOR} STREQUAL "tcmalloc")
 else(${ALLOCATOR} STREQUAL "tcmalloc")
     set(BCOND_TCMALLOC "%bcond_with")
 endif(${ALLOCATOR} STREQUAL "tcmalloc")
+
+if(USE_TLS)
+  set(BCOND_TLS "%bcond_without")
+else(USE_TLS)
+  set(BCOND_TLS "%bcond_with")
+endif(USE_TLS)
+
+if(USE_OPENSSL)
+  set(BCOND_OPENSSL "%bcond_without")
+else(USE_OPENSSL)
+  set(BCOND_OPENSSL "%bcond_with")
+endif(USE_OPENSSL)
+
+if(USE_GNUTLS)
+       set(BCOND_GNUTLS "%bcond_without")
+else(USE_GNUTLS)
+       set(BCOND_GNUTLS "%bcond_with")
+endif(USE_GNUTLS)
+
 
 if(USE_ADMIN_TOOLS)
     set(BCOND_UTILS "%bcond_without")

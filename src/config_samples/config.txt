@@ -31,6 +31,7 @@ PROXY_V4 {}
 RADOS_KV {}
 RADOS_URLS {}
 QOS_DEFAULT_CONFIG {}
+TLS_CONFIG {}
 
 Notably the following FSALs do not have a global config block:
 
@@ -356,7 +357,7 @@ EXPORT_DEFAULTS {}
 
 	Anonymous_gid(anonid, range INT32MIN to UINT32MAX, default -2)
 
-	SecType(enum list, values [none, sys, krb5, krb5i, krb5p],
+	SecType(enum list, values [none, sys, krb5, krb5i, krb5p, tls, mtls],
 	        default [none, sys])
 
 	PrivilegedPort(bool, default false)
@@ -686,7 +687,7 @@ PSEUDOFS {}
 
 	Transports(enum list, values [UDP, TCP, RDMA], default [TCP])
 
-	SecType(enum list, values [none, sys, krb5, krb5i, krb5p],
+	SecType(enum list, values [none, sys, krb5, krb5i, krb5p, tls, mtls],
 	        default [none, sys, krb5, krb5i, krb5p])
 
 	PrivilegedPort(bool, default false)
@@ -1224,3 +1225,33 @@ QOS_DEFAULT_CONFIG {}
     client_read_tokens_renew_time(uint64, range 3600 to UINT64_MAX,
 				  default 86400)
 
+TLS_CONFIG {}
+---------------------
+	Enable_TLS(bool, default false)
+
+	TLS_CA_File(path, default "")
+        eg : TLS_CA_File = "/etc/ganesha/tls/ca.crt";
+
+	TLS_Cert_File(path, default "")
+        eg: TLS_Cert_File = "/etc/ganesha/tls/ganesha.crt";
+
+	TLS_Key_File(path, default "")
+        eg : TLS_Key_File = "/etc/ganesha/tls/ganesha.key";
+
+	TLS_Ciphers(string, default NULL)
+	eg for backend as openssl :
+		TLS_Ciphers = "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384";
+	eg for backend as gnutls :
+	        TLS_Ciphers = ":-CIPHER-ALL:+AES-256-GCM";
+
+	TLS_Min_Version(string, "TLSv1.3")
+        options = "TLSv1.3", "TLSv1.2";
+		eg: TLS_Min_Version = "TLSv1.3"
+
+	Enable_KTLS(bool, default true)
+	To enable and disable KTLS transferes.
+	Note : Currently applicable for only openssl.
+	       If user want to enable/disable ktls for gnutls use gnutls config file.
+
+	Enable_debug(bool, default true)
+	To enable TLS library callback prints and full debugging logs for TLS.

@@ -280,7 +280,19 @@ static int StrExportOptions(struct display_buffer *dspbuf,
 
 		if (b_left <= 0)
 			return b_left;
+#ifdef USE_TLS
+		if ((p_perms->options & EXPORT_OPTION_TLS) != 0)
+			b_left = display_cat(dspbuf, ", tls");
 
+		if (b_left <= 0)
+			return b_left;
+
+		if ((p_perms->options & EXPORT_OPTION_MTLS) != 0)
+			b_left = display_cat(dspbuf, ", mtls");
+
+		if (b_left <= 0)
+			return b_left;
+#endif
 		if ((p_perms->options & EXPORT_OPTION_RPCSEC_GSS_NONE) != 0)
 			b_left = display_cat(dspbuf, ", krb5");
 
@@ -2001,6 +2013,10 @@ static struct config_item_list sec_types[] = {
 	CONFIG_LIST_TOK("krb5", EXPORT_OPTION_RPCSEC_GSS_NONE),
 	CONFIG_LIST_TOK("krb5i", EXPORT_OPTION_RPCSEC_GSS_INTG),
 	CONFIG_LIST_TOK("krb5p", EXPORT_OPTION_RPCSEC_GSS_PRIV),
+#ifdef USE_TLS
+	CONFIG_LIST_TOK("tls", EXPORT_OPTION_TLS),
+	CONFIG_LIST_TOK("mtls", EXPORT_OPTION_MTLS),
+#endif
 	CONFIG_LIST_EOL
 };
 
@@ -2088,7 +2104,7 @@ static struct config_item_list read_access_check_policy_type[] = {
 				      _perms_.set),                                      \
 		CONF_ITEM_LIST_BITS_SET("SecType",                                       \
 					EXPORT_OPTION_AUTH_DEFAULTS,                     \
-					EXPORT_OPTION_AUTH_TYPES, sec_types,             \
+					EXPORT_OPTION_AUTH_TYPES_TLS, sec_types,         \
 					_struct_, _perms_.options,                       \
 					_perms_.set),                                    \
 		CONF_ITEM_BOOLBIT_SET("PrivilegedPort", false,                           \
@@ -2412,6 +2428,8 @@ static void *pseudofs_init(void *link_mem, void *self_struct)
 	 * Root is allowed
 	 * MD Read Access
 	 * Allow use of default auth types
+	 * if TLS required, user need to explicitly populate Sec=tls or mtls.
+	 *
 	 *
 	 * Allow non-privileged client ports to access pseudo export.
 	 */

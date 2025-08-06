@@ -85,6 +85,7 @@
 #include "nfs_qos.h"
 #include "nfs_metrics.h"
 #include "sal_metrics.h"
+#include "gsh_tls.h"
 
 pthread_mutexattr_t default_mutex_attr;
 pthread_rwlockattr_t default_rwlock_attr;
@@ -710,6 +711,40 @@ int nfs_set_param_from_conf(config_file_t parse_tree,
 			"Error while parsing NFS/KRB5 configuration for RPCSEC_GSS");
 		return -1;
 	}
+#endif
+
+#ifdef USE_TLS
+	/* QoS global parameters */
+	(void)load_config_from_parse(parse_tree, &tls_core, &tls_config,
+			true, err_type);
+	if (!config_error_is_harmless(err_type)) {
+		LogCrit(COMPONENT_INIT,
+				"Error while parsing qos configuration");
+		return -1;
+	}
+
+	/* Validate configuration */
+	if (tls_config.enabled) {
+		if (!tls_config.cert_file) {
+			LogCrit(COMPONENT_CONFIG,
+				"TLS_Cert_File  required when TLS is enabled");
+			return -1;
+		}
+
+		if (!tls_config.key_file) {
+			LogCrit(COMPONENT_CONFIG,
+				"TLS_Key_File required when TLS is enabled");
+			return -1;
+		}
+
+		if (!tls_config.ca_file) {
+			LogCrit(COMPONENT_CONFIG,
+				"TLS_CA_File required when TLS is enabled");
+			return -1;
+		}
+	}
+	if (tls_config.enabled == true)
+		nfs_init_tls(tls_config);
 #endif
 
 	/* Directory Services specific configuration */

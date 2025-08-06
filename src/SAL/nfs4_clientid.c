@@ -2019,6 +2019,12 @@ int compare_client_record(struct gsh_buffdesc *buff1,
 		return 1;
 	}
 
+	if (pkey1->cr_extra_flags != pkey2->cr_extra_flags) {
+		if (isDebug(COMPONENT_HASHTABLE))
+			LogFullDebug(COMPONENT_CLIENTID, "ExtraFlags mismatch");
+		return 1;
+	}
+
 	rc = cmp_sockaddr(&pkey1->cr_server_addr, &pkey2->cr_server_addr, true);
 
 	if (rc == 0) {
@@ -2075,6 +2081,7 @@ int display_client_record_val(struct display_buffer *dspbuf,
 nfs_client_record_t *get_client_record(const char *const value,
 				       const size_t len,
 				       const uint32_t pnfs_flags,
+				       const uint32_t flags,
 				       const sockaddr_t *server_addr)
 {
 	nfs_client_record_t *record;
@@ -2097,6 +2104,7 @@ nfs_client_record_t *get_client_record(const char *const value,
 	record->cr_unconfirmed_rec = NULL;
 	memcpy(record->cr_client_val, value, len);
 	record->cr_pnfs_flags = pnfs_flags;
+	record->cr_extra_flags = flags;
 	/* Canonicalise, does the right thing with IPv4 input */
 	server_addr_conv = convert_ipv6_to_ipv4((sockaddr_t *)server_addr,
 						&server_addr_ipv4);

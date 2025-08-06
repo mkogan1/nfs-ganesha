@@ -87,6 +87,7 @@ enum nfs_req_result nfs4_op_exchange_id(struct nfs_argop4 *op,
 	char *temp;
 	bool update;
 	uint32_t server_pnfs_flags = 0;
+	uint32_t server_extra_flags = 0;
 	sockaddr_t *server_addr = 0;
 	/* Arguments and response */
 	EXCHANGE_ID4args *const arg_EXCHANGE_ID4 =
@@ -190,11 +191,18 @@ enum nfs_req_result nfs4_op_exchange_id(struct nfs_argop4 *op,
 
 	server_addr = svc_getrpclocal(data->req->rq_xprt);
 
+#ifdef USE_TLS
+	if (data->req->rq_xprt->xp_tls.tls_established) {
+		server_extra_flags |= EXCHGID4_FLAG_TLS_ESTABLISHED;
+		if (data->req->rq_xprt->xp_tls.mtls)
+			server_extra_flags |= EXCHGID4_FLAG_MTLS_ESTABLISHED;
+	}
+#endif
 	/* Do we already have one or more records for client id (x)? */
 	client_record = get_client_record(
 		arg_EXCHANGE_ID4->eia_clientowner.co_ownerid.co_ownerid_val,
 		arg_EXCHANGE_ID4->eia_clientowner.co_ownerid.co_ownerid_len,
-		server_pnfs_flags, server_addr);
+		server_pnfs_flags, server_extra_flags, server_addr);
 
 	if (client_record == NULL) {
 		/* Some major failure */

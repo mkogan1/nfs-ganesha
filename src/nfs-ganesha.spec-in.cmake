@@ -101,6 +101,18 @@ Requires: openSUSE-release
 @BCOND_SANITIZE_ADDRESS@ sanitize_address
 %global use_sanitize_address %{on_off_switch sanitize_address}
 
+@BCOND_TLS@ tls
+%if %{with man_page}
+%{_mandir}/*/ganesha-tls-config.8.gz
+%endif
+%global use_tls %{on_off_switch tls}
+
+@BCOND_OPENSSL@ openssl
+%global use_openssl %{on_off_switch openssl}
+
+@BCOND_GNUTLS@ gnutls
+%global use_gnutls %{on_off_switch gnutls}
+
 @BCOND_LEGACY_PYTHON_INSTALL@ legacy_python_install
 %global use_legacy_python_install %{on_off_switch legacy_python_install}
 
@@ -552,6 +564,9 @@ cmake3 .	-DCMAKE_BUILD_TYPE=Debug			\
 	-DUSE_FSAL_GLUSTER=%{use_fsal_gluster}		\
 	-DUSE_SYSTEM_NTIRPC=%{use_system_ntirpc}	\
 	-DENABLE_QOS=%{use_qos}				\
+	-DUSE_TLS=%{use_tls}                            \
+	-DUSE_OPENSSL=%{use_openssl}                    \
+	-DUSE_GNUTLS=%{use_gnutls}                      \
 	-DUSE_9P_RDMA=%{use_rdma}			\
 	-DUSE_LTTNG=%{use_lttng}			\
 	-DUSE_UNWIND=%{use_unwind}			\
