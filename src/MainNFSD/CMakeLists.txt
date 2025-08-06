@@ -205,6 +205,7 @@ target_link_libraries(ganesha_nfsd
   ${LTTNG_LIBRARIES}
   ${MOOSHIKA_LIBRARIES}
   ganesha_monitoring
+  ntirpcmonitoring
 )
 
 if (USE_LTTNG)
