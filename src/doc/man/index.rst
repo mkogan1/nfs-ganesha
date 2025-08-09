@@ -21,3 +21,4 @@
    ganesha-rados-cluster-design
    ganesha-rados-grace
    ganesha-tls-config
+   ganesha-fscrypt-config
