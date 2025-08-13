@@ -97,10 +97,94 @@ enum nfs_req_result nfs4_op_free_stateid(struct nfs_argop4 *op,
 		return NFS_REQ_ERROR;
 	}
 
-	res_FREE_STATEID4->fsr_status =
-		nfs4_Check_Stateid(&arg_FREE_STATEID4->fsa_stateid, NULL,
-				   &state, data, STATEID_SPECIAL_CURRENT, 0,
-				   false, "FREE_STATEID");
+	/* Check if the stateid being freed corresponds to a delegation that
+	 * was previously revoked.
+	 *
+	 * If the stateid exists in the revoked_delegations_list, it means the
+	 * server has already revoked that delegation and has been returning
+	 * NFS4ERR_DELEG_REVOKED for any operations using it.
+	 *
+	 * FREE_STATEID in this case serves as the client's acknowledgment
+	 * of revocation. We remove the stateid from the revoked list and
+	 * clean up any remaining state objects so they no longer consume
+	 * server resources.
+	 */
+	if (is_stateid_revoked(&arg_FREE_STATEID4->fsa_stateid)) {
+		LogDebug(
+			COMPONENT_STATE,
+			"Stateid is revoked, handling FREE_STATEID for revoked delegation");
+
+		/* Obtain the state pointer without error */
+		state = nfs4_State_Get_Pointer(
+			(char *)arg_FREE_STATEID4->fsa_stateid.other);
+
+		/* Remove stateid from revoked delegation list that was at
+		 * the time of revoke
+		 */
+		remove_revoked_stateid(&arg_FREE_STATEID4->fsa_stateid);
+
+		if (state) {
+			LogDebug(
+				COMPONENT_STATE,
+				"Revoked delegation state found in state table, type=%d",
+				state->state_type);
+
+			if (state->state_type == STATE_TYPE_DELEG) {
+				/* Get object and export references for
+				 * locking and context
+				 */
+				if (get_state_obj_export_owner_refs(
+					    state, &obj, &export, NULL)) {
+					save_op_context_export_and_set_export(
+						&saved, export);
+
+					/* Lock and delete state */
+					STATELOCK_lock(obj);
+					state_del_locked(state);
+					STATELOCK_unlock(obj);
+
+					obj->obj_ops->put_ref(obj);
+					restore_op_context_export(&saved);
+				} else {
+					/* Unable to get export/obj, fallback:
+					 * just delete state without lock
+					 */
+					LogDebug(
+						COMPONENT_STATE,
+						"Could not get export/object refs for revoked delegation state cleanup");
+					state_del_locked(state);
+				}
+				dec_state_t_ref(state);
+				res_FREE_STATEID4->fsr_status = NFS4_OK;
+				GSH_AUTO_TRACEPOINT(
+					nfs4, op_free_stateid_end, TRACE_INFO,
+					"FREE_STATEID res: status=%d (revoked delegation freed)",
+					res_FREE_STATEID4->fsr_status);
+				return NFS_REQ_OK;
+			}
+			LogDebug(
+				COMPONENT_STATE,
+				"Revoked state found but type is not delegation (%d) returning BAD_STATEID",
+				state->state_type);
+
+			res_FREE_STATEID4->fsr_status = NFS4ERR_BAD_STATEID;
+			return nfsstat4_to_nfs_req_result(
+				res_FREE_STATEID4->fsr_status);
+		}
+		LogDebug(
+			COMPONENT_STATE,
+			"Revoked delegation stateid not found in state table, treating FREE_STATEID as success");
+
+		/* Since the revoked stateid is no longer in the state table,
+		 * treat FREE_STATEID as successful
+		 */
+		res_FREE_STATEID4->fsr_status = NFS4_OK;
+		return NFS_REQ_OK;
+	}
+
+	res_FREE_STATEID4->fsr_status = nfs4_Check_Stateid(
+		&arg_FREE_STATEID4->fsa_stateid, NULL, &state, data,
+		STATEID_SPECIAL_CURRENT, 0, false, "FREE_STATEID");
 
 	if (res_FREE_STATEID4->fsr_status != NFS4_OK)
 		return NFS_REQ_ERROR;

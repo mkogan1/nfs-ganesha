@@ -883,6 +883,8 @@ nfsstat4 handle_deleg_getattr(struct fsal_obj_handle *obj,
 			      nfs_client_id_t *client);
 int cbgetattr_impl(struct fsal_obj_handle *obj, nfs_client_id_t *client,
 		   struct gsh_export *ctx_exp);
+bool is_stateid_revoked(const stateid4 *stateid);
+void remove_revoked_stateid(const stateid4 *stateid);
 
 /**
  * @brief Decrement g_total_num_files_delegated if the file has no delegations

@@ -2665,9 +2665,40 @@ fsal_status_t fsal_start_io(struct fsal_fd **out_fd,
 {
 	fsal_status_t status = { ERR_FSAL_NO_ERROR, 0 };
 	struct fsal_fd *state_fd;
+	struct state_t *openstate;
+
+	LogFullDebug(COMPONENT_FSAL, "Open State = %p, State Type = %d", state,
+		     state->state_type);
 
 	if (state == NULL)
 		goto global;
+
+	/* Handle delegation states: if this is a delegation (read or write),
+	 * retrieve the associated openstate. Use the fd from that openstate
+	 * for I/O if present; otherwise, fall back to the global fd.
+	 */
+	if (state->state_type == STATE_TYPE_DELEG) {
+		struct state_deleg *deleg;
+
+		deleg = &state->state_data.deleg;
+
+		LogFullDebug(COMPONENT_FSAL,
+			     "Deleg Type = %d, Deleg State = %d",
+			     deleg->sd_type, deleg->sd_state);
+
+		if (deleg->sd_type == OPEN_DELEGATE_WRITE ||
+		    deleg->sd_type == OPEN_DELEGATE_READ) {
+			openstate = nfs4_State_Get_Pointer(
+				state->state_data.deleg.openstate_key);
+
+			if (openstate == NULL) {
+				LogCrit(COMPONENT_FSAL,
+					"No openstate with delegation");
+				goto global;
+			}
+			goto use_related_fd;
+		}
+	}
 
 	/* Check if we can use the fd in the state */
 	state_fd = (struct fsal_fd *)(state + 1);
@@ -2720,7 +2751,6 @@ fsal_status_t fsal_start_io(struct fsal_fd **out_fd,
 			 * again with it's openflags. Otherwise leave the
 			 * access error as is.
 			 */
-			struct state_t *openstate;
 
 			/** @todo FSF - interesting question - what do we do if
 			 *              openstate is being re-opened??? I think
@@ -2781,7 +2811,6 @@ fsal_status_t fsal_start_io(struct fsal_fd **out_fd,
 	 * that don't want to open a separate fd for lock states).
 	 */
 	if (state->state_type == STATE_TYPE_LOCK) {
-		struct state_t *openstate;
 		struct fsal_fd *related_fd;
 
 		openstate = nfs4_State_Get_Pointer(
@@ -2792,6 +2821,8 @@ fsal_status_t fsal_start_io(struct fsal_fd **out_fd,
 			 */
 			goto global;
 		}
+
+use_related_fd:
 
 		related_fd = (struct fsal_fd *)(openstate + 1);
 

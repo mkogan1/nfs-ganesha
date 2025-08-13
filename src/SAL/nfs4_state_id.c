@@ -915,6 +915,31 @@ check_it:
 	/* Try to get the related state */
 	state2 = nfs4_State_Get_Pointer(stateid->other);
 
+	/* Check if the given stateid corresponds to a delegation that has
+	 * already been revoked by the server.
+	 *
+	 * Once a delegation is revoked, the server must reject any subsequent
+	 * operation that presents that delegation's stateid.
+	 *
+	 * This list-based check ensures that if the stateid was recorded in
+	 * revoked_delegations_list at revoke time, we detect it here and
+	 * immediately return NFS4ERR_DELEG_REVOKED to the client instead of
+	 * proceeding with normal state validation.
+	 */
+	if (is_stateid_revoked(stateid)) {
+		LogDebug(
+			COMPONENT_STATE,
+			"Check %s stateid corresponds to revoked delegation (revoked list)",
+			tag);
+
+		if (state2 != NULL)
+			dec_state_t_ref(state2);
+
+		*state = NULL;
+		data->current_stateid_valid = false;
+		return NFS4ERR_DELEG_REVOKED;
+	}
+
 	/* We also need a reference to the state_obj and state_owner.
 	 * If we can't get them, we will check below for lease invalidity.
 	 * Note that calling get_state_obj_export_owner_refs with a NULL
