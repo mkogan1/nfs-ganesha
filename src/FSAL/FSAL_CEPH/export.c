@@ -409,8 +409,15 @@ static fsal_status_t get_fs_dynamic_info(struct fsal_export *export_pub,
 	int rc = 0;
 	/* Filesystem stat */
 	struct statvfs vfs_st;
+	/* The private 'full' object handle */
+	struct ceph_handle *handle =
+		container_of(obj_hdl, struct ceph_handle, handle);
 
-	rc = ceph_ll_statfs(export->cmount, export->root->i, &vfs_st);
+	/* Pass the inode for the obj_handle as the basis for the statfs.
+	 * If the inode is within a sub-volume, cephfs will report the correct
+	 * sub-volume quota.
+	 */
+	rc = ceph_ll_statfs(export->cmount, handle->i, &vfs_st);
 
 	if (rc < 0)
 		return ceph2fsal_error(rc);
