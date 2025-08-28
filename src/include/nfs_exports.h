@@ -254,6 +254,8 @@ bool log_an_export(struct gsh_export *exp, void *state);
 
 uint32_t export_check_options(struct gsh_export *exp);
 
+extern uint32_t export_check_client_options(struct gsh_export *exp);
+
 static inline bool export_can_be_mounted(struct gsh_export *exp)
 {
 	uint32_t options = export_check_options(exp);

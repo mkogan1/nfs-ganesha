@@ -48,6 +48,7 @@
   err_type;
   err_type_str;
   export_admin_counter;
+  export_check_client_options;
   fd_lru_pkginit;
   fd_lru_pkgshutdown;
   fgetxattr;

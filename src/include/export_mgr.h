@@ -229,6 +229,8 @@ struct gsh_export {
 	bool update_prune_unmount;
 	/** Due to an update, this export will need to be remounted. */
 	bool update_remount;
+	/* Save the client delegation option from config */
+	uint32_t cli_deleg_option;
 };
 
 /* Use macro to define this to get around include file order. */
