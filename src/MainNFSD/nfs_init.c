@@ -86,8 +86,6 @@
 #include "nfs_metrics.h"
 #include "sal_metrics.h"
 #include "gsh_tls.h"
-#endif
-#include "nfs_qos.h"
 
 #ifdef USE_GRPC
 #include "gRPC/GrpcServer.h"
