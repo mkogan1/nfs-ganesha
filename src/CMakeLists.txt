@@ -1853,11 +1853,6 @@ add_sanitizers(ganesha.nfsd)
 
 target_link_libraries(ganesha.nfsd
   ganesha_nfsd
-  ${LIBTIRPC_LIBRARIES}
-  ${SYSTEM_LIBRARIES}
-  ${LTTNG_LIBRARIES}
-  ${LDFLAG_DISALLOW_UNDEF}
-  ganesha_monitoring
 )
 set_target_properties(ganesha.nfsd PROPERTIES COMPILE_FLAGS "-fPIC")
 install(TARGETS ganesha.nfsd COMPONENT daemon DESTINATION bin)

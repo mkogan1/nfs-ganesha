@@ -207,6 +207,7 @@ add_library(ganesha_nfsd SHARED
 add_sanitizers(ganesha_nfsd)
 
 target_link_libraries(ganesha_nfsd
+  PUBLIC
   ${LIBTIRPC_LIBRARIES}
   ${SYSTEM_LIBRARIES}
   ${LTTNG_LIBRARIES}
