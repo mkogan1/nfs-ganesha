@@ -217,6 +217,29 @@ int main(int argc, char *argv[])
 	sigset_t signals_to_block;
 	struct config_error_type err_type;
 
+	/* Set up for the signal handler.
+	 * Blocks the signals the signal handler will handle.
+	 *
+	 * It is important for to block these signals here, before any other
+	 * thread is started, so that they are not delivered to other
+	 * threads.
+	 */
+	sigemptyset(&signals_to_block);
+	sigaddset(&signals_to_block, SIGTERM);
+	sigaddset(&signals_to_block, SIGHUP);
+	sigaddset(&signals_to_block, SIGPIPE);
+	if (pthread_sigmask(SIG_BLOCK, &signals_to_block, NULL) != 0) {
+		/* Note that the logging library has not yet been
+		 * initialized, so we can't use it here. Also note that we
+		 * can't initialize logging before setting the signal mask,
+		 * since the logging library starts a new thread if the
+		 * binary is compiled with USE_UNWIND_ENRICHED_BT.
+		 * Therefore, we directly write to stderr. */
+		fprintf(stderr,
+			"Could not start nfs daemon, pthread_sigmask failed\n");
+		return 1;
+	}
+
 	/* Set the server's boot time and epoch */
 	now(&nfs_ServerBootTime);
 	nfs_ServerEpoch = (time_t)nfs_ServerBootTime.tv_sec;
@@ -498,19 +521,6 @@ int main(int argc, char *argv[])
 				nfs_pidfile_path, strerror(errno), errno);
 			goto fatal_die;
 		}
-	}
-
-	/* Set up for the signal handler.
-	 * Blocks the signals the signal handler will handle.
-	 */
-	sigemptyset(&signals_to_block);
-	sigaddset(&signals_to_block, SIGTERM);
-	sigaddset(&signals_to_block, SIGHUP);
-	sigaddset(&signals_to_block, SIGPIPE);
-	if (pthread_sigmask(SIG_BLOCK, &signals_to_block, NULL) != 0) {
-		LogFatal(COMPONENT_MAIN,
-			 "Could not start nfs daemon, pthread_sigmask failed");
-		goto fatal_die;
 	}
 
 	/* init URL package */
