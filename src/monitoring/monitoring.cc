@@ -45,6 +45,7 @@ static const char kExport[] = "export";
 static const char kOperation[] = "operation";
 static const char kStatus[] = "status";
 static const char kVersion[] = "version";
+static const char kExportpath[] = "path";
 
 namespace ganesha_monitoring
 {
@@ -451,8 +452,7 @@ void monitoring_register_export_label(const export_id_t export_id,
 	exportLabels.InsertOrUpdate(export_id, std::string(label));
 }
 
-void monitoring__init(const sockaddr_t *monitoring_addr,
-		      uint16_t port,
+void monitoring__init(const sockaddr_t *monitoring_addr, uint16_t port,
 		      bool enable_dynamic_metrics)
 {
 	static bool initialized = false;
@@ -472,12 +472,10 @@ void monitoring__shutdown(void)
 	exposer.stop();
 	shutdown = true;
 }
-void monitoring__dynamic_observe_nfs_request(const char *operation,
-					     nsecs_elapsed_t request_time,
-					     const char *version,
-					     const char *status_label,
-					     export_id_t export_id,
-					     const char *client_ip)
+void monitoring__dynamic_observe_nfs_request(
+	const char *operation, nsecs_elapsed_t request_time,
+	const char *version, const char *status_label, export_id_t export_id,
+	const char *path, const char *client_ip)
 {
 	if (!dynamic_metrics)
 		return;
@@ -521,11 +519,13 @@ void monitoring__dynamic_observe_nfs_request(const char *operation,
 	const std::string exportLabel = GetExportLabel(export_id);
 	dynamic_metrics->requestsTotalByOperationExport
 		.Add({ { kOperation, operationLowerCase },
-		       { kExport, exportLabel } })
+		       { kExport, exportLabel },
+		       { kExportpath, path } })
 		.Increment();
 	dynamic_metrics->latencyByOperationExport
 		.Add({ { kOperation, operationLowerCase },
-		       { kExport, exportLabel } },
+		       { kExport, exportLabel },
+		       { kExportpath, path } },
 		     latencyBuckets)
 		.Observe(latency_ms);
 }
@@ -533,7 +533,7 @@ void monitoring__dynamic_observe_nfs_request(const char *operation,
 void monitoring__dynamic_observe_nfs_io(size_t bytes_requested,
 					size_t bytes_transferred, bool success,
 					bool is_write, export_id_t export_id,
-					const char *client_ip)
+					const char *path, const char *client_ip)
 {
 	if (!dynamic_metrics)
 		return;
@@ -573,17 +573,25 @@ void monitoring__dynamic_observe_nfs_io(size_t bytes_requested,
 	// Observe by export metrics.
 	const std::string exportLabel = GetExportLabel(export_id);
 	dynamic_metrics->bytesReceivedTotalByOperationExport
-		.Add({ { kOperation, operation }, { kExport, exportLabel } })
+		.Add({ { kOperation, operation },
+		       { kExport, exportLabel },
+		       { kExportpath, path } })
 		.Increment(bytes_received);
 	dynamic_metrics->bytesSentTotalByOperationExport
-		.Add({ { kOperation, operation }, { kExport, exportLabel } })
+		.Add({ { kOperation, operation },
+		       { kExport, exportLabel },
+		       { kExportpath, path } })
 		.Increment(bytes_sent);
 	dynamic_metrics->requestSizeByOperationExport
-		.Add({ { kOperation, operation }, { kExport, exportLabel } },
+		.Add({ { kOperation, operation },
+		       { kExport, exportLabel },
+		       { kExportpath, path } },
 		     requestSizeBuckets)
 		.Observe(bytes_requested);
 	dynamic_metrics->responseSizeByOperationExport
-		.Add({ { kOperation, operation }, { kExport, exportLabel } },
+		.Add({ { kOperation, operation },
+		       { kExport, exportLabel },
+		       { kExportpath, path } },
 		     requestSizeBuckets)
 		.Observe(bytes_sent);
 }
