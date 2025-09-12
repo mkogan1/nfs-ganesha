@@ -165,8 +165,7 @@ histogram_buckets_t monitoring__buckets_exp2_compact(void);
 void monitoring_register_export_label(export_id_t export_id, const char *label);
 
 /* Inits monitoring module and exposes a Prometheus-format HTTP endpoint. */
-void monitoring__init(const sockaddr_t *monitoring_addr,
-		      uint16_t port,
+void monitoring__init(const sockaddr_t *monitoring_addr, uint16_t port,
 		      bool enable_dynamic_metrics);
 
 /* Shuts down monitoring module */
@@ -185,16 +184,15 @@ void monitoring__shutdown(void);
  * - Latency in ms as histogram.
  */
 
-void monitoring__dynamic_observe_nfs_request(const char *operation,
-					     nsecs_elapsed_t request_time,
-					     const char *version,
-					     const char *status_label,
-					     export_id_t export_id,
-					     const char *client_ip);
+void monitoring__dynamic_observe_nfs_request(
+	const char *operation, nsecs_elapsed_t request_time,
+	const char *version, const char *status_label, export_id_t export_id,
+	const char *path, const char *client_ip);
 
 void monitoring__dynamic_observe_nfs_io(size_t bytes_requested,
 					size_t bytes_transferred, bool success,
 					bool is_write, export_id_t export_id,
+					const char *path,
 					const char *client_ip);
 
 /* MDCache hit rates. */
@@ -270,18 +268,20 @@ void monitoring__dynamic_mdcache_cache_miss(const char *operation,
 		UNUSED_EXPR(export_id);                    \
 		UNUSED_EXPR(label);                        \
 	})
-#define monitoring__dynamic_observe_nfs_request(                              \
-	operation, request_time, version, status_label, export_id, client_ip) \
-	({                                                                    \
-		UNUSED_EXPR(operation);                                       \
-		UNUSED_EXPR(request_time);                                    \
-		UNUSED_EXPR(version);                                         \
-		UNUSED_EXPR(status_label);                                    \
-		UNUSED_EXPR(export_id);                                       \
-		UNUSED_EXPR(client_ip);                                       \
+#define monitoring__dynamic_observe_nfs_request(operation, request_time,    \
+						version, status_label,      \
+						export_id, path, client_ip) \
+	({                                                                  \
+		UNUSED_EXPR(operation);                                     \
+		UNUSED_EXPR(request_time);                                  \
+		UNUSED_EXPR(version);                                       \
+		UNUSED_EXPR(status_label);                                  \
+		UNUSED_EXPR(export_id);                                     \
+		UNUSED_EXPR(path);                                          \
+		UNUSED_EXPR(client_ip);                                     \
 	})
 #define monitoring__dynamic_observe_nfs_io(bytes_requested, bytes_transferred, \
-					   success, is_write, export_id,       \
+					   success, is_write, export_id, path, \
 					   client_ip)                          \
 	({                                                                     \
 		UNUSED_EXPR(bytes_requested);                                  \
@@ -289,6 +289,7 @@ void monitoring__dynamic_mdcache_cache_miss(const char *operation,
 		UNUSED_EXPR(success);                                          \
 		UNUSED_EXPR(is_write);                                         \
 		UNUSED_EXPR(export_id);                                        \
+		UNUSED_EXPR(path);                                             \
 		UNUSED_EXPR(client_ip);                                        \
 	})
 #define monitoring__dynamic_mdcache_cache_hit(operation, export_id) \
