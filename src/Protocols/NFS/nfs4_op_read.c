@@ -169,7 +169,7 @@ static enum nfs_req_result nfs4_complete_read(struct nfs4_read_data *data)
 	}
 
 	server_stats_io_done(
-		read_arg->io_request, read_arg->io_amount,
+		read_arg->iov[0].iov_len, read_arg->io_amount,
 		(data->res_READ4->status == NFS4_OK) ? true : false, false);
 
 	if (data->owner != NULL) {
