@@ -33,6 +33,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <streambuf>
+#include <mutex>
 
 #include "prometheus/histogram.h"
 #include "prometheus/text_serializer.h"
@@ -66,6 +67,12 @@ class SocketStreambuf : public std::streambuf {
 	{
 		return aborted_;
 	}
+	void safe_close(const int fd)
+	{
+		std::lock_guard<std::mutex> lock(socket_mutex_);
+		close(fd);
+		closed_ = true;
+	}
 
     protected:
 	/* Flushes buffer to socket */
@@ -87,7 +94,9 @@ class SocketStreambuf : public std::streambuf {
 	/* Sends buffer to socket (blocking) and clears it */
 	int sync() override
 	{
-		if (aborted_)
+		std::lock_guard<std::mutex> lock(socket_mutex_);
+
+		if (closed_ || aborted_)
 			return -1;
 		const std::size_t bytes_count = pptr() - pbase();
 		if (bytes_count > 0) {
@@ -113,6 +122,8 @@ class SocketStreambuf : public std::streambuf {
     private:
 	const int socket_fd_;
 	bool aborted_ = false;
+	bool closed_ = false;
+	std::mutex socket_mutex_;
 	std::array<char, size> buffer_{};
 
 	// Delete copy/move constructor/assignment
@@ -282,7 +293,7 @@ void *Exposer::server_thread(void *arg)
 		prometheus::TextSerializer::Serialize(socket_ostream, families);
 		socket_ostream.flush();
 
-		close(client_fd);
+		socket_streambuf.safe_close(client_fd);
 
 		const int64_t elapsed_ms = get_elapsed_ms(start_time);
 		if (socket_streambuf.was_aborted())
