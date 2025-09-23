@@ -97,7 +97,13 @@ class SocketStreambuf : public std::streambuf {
 					send(socket_fd_, pbase() + bytes_sent,
 					     bytes_count - bytes_sent, 0));
 				if (result < 0) {
-					PERROR("Could not send metrics, aborting");
+					if (errno != EPIPE) {
+						/* EPIPE means the client closed the
+						 * connection (either gracefully or
+						 * abruptly), so we can safely ignore
+						 * logging it here.*/
+						PERROR("Could not send metrics, aborting");
+					}
 					aborted_ = true;
 					return -1;
 				}
