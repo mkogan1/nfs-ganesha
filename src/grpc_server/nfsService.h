@@ -29,18 +29,9 @@
 #include <pthread.h>
 #include <iostream>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "nfs_core.h"
-#include "sal_data.h"
 #include "sal_functions.h"
 #include "config.h"
-
-#ifdef __cplusplus
-}
-#endif
 
 class GetClientIdService final : public nfsService::GetClientId::Service {
 public:

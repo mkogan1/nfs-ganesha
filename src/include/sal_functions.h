@@ -44,6 +44,10 @@
 #include "fsal.h"
 #include "gsh_recovery.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern struct glist_head fsal_list;
 
 /**
@@ -1058,6 +1062,10 @@ struct nfs4_recovery_backend {
 void fs_backend_init(struct nfs4_recovery_backend **);
 void fs_ng_backend_init(struct nfs4_recovery_backend **);
 int load_recovery_param_from_conf(config_file_t, struct config_error_type *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SAL_FUNCTIONS_H */
 

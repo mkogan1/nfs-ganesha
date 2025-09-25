@@ -27,8 +27,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_BINARY_DIR}/proto)
 
 set(SOURCE_FILES ${CMAKE_SOURCE_DIR}/grpc_server/GrpcServer.cc
-    ${CMAKE_BINARY_DIR}/proto/nfsService.pb.cc
-    ${CMAKE_BINARY_DIR}/proto/nfsService.grpc.pb.cc
+	${CMAKE_BINARY_DIR}/proto/nfsService.pb.cc
+	${CMAKE_BINARY_DIR}/proto/nfsService.grpc.pb.cc
 	${CMAKE_SOURCE_DIR}/grpc_server/nfsServiceClient.cpp
 	${CMAKE_SOURCE_DIR}/grpc_server/nfsServiceServer.cpp)
 
@@ -40,7 +40,7 @@ target_link_libraries(gRPCLibrary
 		      grpc++_reflection
 	      	      ${SYSTEM_LIBRARIES}
 	      		sal)
-		target_include_directories(gRPCLibrary PRIVATE
+target_include_directories(gRPCLibrary PRIVATE
 	                  ${PROTOBUF_INCLUDE_DIR}
 	                   ${CMAKE_SOURCE_DIR}/proto
 	         	   ${CMAKE_SOURCE_DIR}/grpc_server)
