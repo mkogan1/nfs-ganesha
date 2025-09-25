@@ -1399,8 +1399,8 @@ if(USE_DBUS)
 endif(USE_DBUS)
 
 if(USE_GRPC)
-  add_subdirectory(grpc_server)
-  add_subdirectory(proto)
+    add_subdirectory(proto)
+    add_subdirectory(grpc_server)
 endif(USE_GRPC)
 
 if(USE_LTTNG)

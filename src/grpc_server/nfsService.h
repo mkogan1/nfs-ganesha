@@ -22,6 +22,7 @@
 #define  NFSSERVICESERVER_H
 
 #include "nfsService.grpc.pb.h"
+#include "nfsService.pb.h"
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/param.h>
