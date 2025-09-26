@@ -773,23 +773,6 @@ static int client_commit(void *node, void *link_mem, void *self_struct,
 				 EXPORT_OPTION_TRANSPORTS);
 		}
 
-		/* Check if the client block has a delegation option set */
-		LogFullDebug(COMPONENT_CONFIG,
-				"This client block delegations %d",
-				(expcli->client_perms.options &
-				 EXPORT_OPTION_DELEGATIONS));
-
-		/* Save the client delegation option in gsh_export */
-		export->cli_deleg_option |=
-			(expcli->client_perms.options &
-			 EXPORT_OPTION_DELEGATIONS);
-
-		if (export->cli_deleg_option) {
-			/* There is a delegation bit set in the options.*/
-			LogFullDebug(COMPONENT_CONFIG,
-					"This client block enabled the delegations.");
-		}
-
 		glist_splice_tail(&export->clients, &cli->cle_list);
 	}
 	if (errcnt == 0)
@@ -1254,29 +1237,6 @@ uint32_t export_check_options(struct gsh_export *exp)
 	PTHREAD_RWLOCK_unlock(&exp->exp_lock);
 
 	return perms.options;
-}
-
-/* For per client delegation behaviour */
-uint32_t export_check_client_options(struct gsh_export *exp)
-{
-	uint32_t exp_options = 0;
-	uint32_t cli_options = 0;
-	uint32_t eff_options = 0;
-
-	if (!exp)
-		return 0;
-
-	/* Check the EXPORT, EXPORT_DEFAULTS options */
-	exp_options = export_check_options(exp);
-
-	/* Check the client delegation options */
-	if (exp->cli_deleg_option)
-		cli_options |= exp->cli_deleg_option;
-
-	/* Calculate the effective options */
-	eff_options = exp_options | cli_options;
-
-	return  eff_options;
 }
 
 /**
