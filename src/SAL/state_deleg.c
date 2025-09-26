@@ -60,13 +60,6 @@
 int32_t g_total_num_files_delegated;
 int32_t g_max_files_delegatable;
 
-/* Initialize the global revoked list head */
-static struct glist_head revoked_delegations_list =
-	GLIST_HEAD_INIT(revoked_delegations_list);
-
-/* Mutex to protect list */
-static pthread_mutex_t revoked_delegations_lock = PTHREAD_MUTEX_INITIALIZER;
-
 /**
  * @brief Initialize new delegation state as argument for state_add()
  *
@@ -459,116 +452,6 @@ void get_deleg_perm(nfsace4 *permissions, open_delegation_type4 type)
 }
 
 /**
- * @brief Remove a revoked delegation stateid from the revoked list.
- *
- * This function searches the global revoked_delegations_list for the given
- * stateid and removes it if found, freeing the corresponding tracking entry.
- *
- * It is typically called when the client has acknowledged the revocation
- * and sent an OP_FREE_STATEID for the revoked delegation, meaning the
- * server no longer needs to track it as revoked.
- *
- * @param[in] stateid Pointer to the stateid to be removed from the list.
- */
-void remove_revoked_stateid(const stateid4 *stateid)
-{
-	struct glist_head *pos, *tmp;
-	struct revoked_delegation *entry;
-	bool found = false;
-
-	pthread_mutex_lock(&revoked_delegations_lock);
-	glist_for_each_safe(pos, tmp, &revoked_delegations_list) {
-		entry = glist_entry(pos, struct revoked_delegation, list);
-		if (memcmp(&entry->stateid, stateid, sizeof(stateid4)) == 0) {
-			glist_del(pos);
-			free(entry);
-			found = true;
-			LogDebug(
-				COMPONENT_STATE,
-				"Removed revoked delegation stateid from list");
-			break;
-		}
-	}
-	if (!found) {
-		LogDebug(
-			COMPONENT_STATE,
-			"Did not find revoked delegation stateid in revoked list");
-	}
-	pthread_mutex_unlock(&revoked_delegations_lock);
-}
-
-/**
- * @brief Check if a given stateid corresponds to a revoked delegation.
- *
- * Searches the revoked_delegations_list to determine if the provided
- * stateid has previously been marked as revoked. This is primarily
- * used by stateid validation logic (nfs4_Check_Stateid) which gets
- * called in I/O paths to decide whether to return NFS4ERR_DELEG_REVOKED
- * to the client.
- *
- * @param[in] stateid Pointer to the stateid to check.
- *
- * @return true  If the stateid is found in the revoked list.
- * @return false Otherwise.
- */
-bool is_stateid_revoked(const stateid4 *stateid)
-{
-	bool found = false;
-	struct glist_head *pos;
-	struct revoked_delegation *entry;
-
-	pthread_mutex_lock(&revoked_delegations_lock);
-	glist_for_each(pos, &revoked_delegations_list) {
-		entry = glist_entry(pos, struct revoked_delegation, list);
-		if (memcmp(&entry->stateid, stateid, sizeof(stateid4)) == 0) {
-			found = true;
-			break;
-		}
-	}
-	pthread_mutex_unlock(&revoked_delegations_lock);
-
-	return found;
-}
-
-/**
- * @brief Add a delegation state to the revoked delegations list.
- *
- * Allocates and populates a revoked_delegation entry from the provided
- * state object and appends it to the global revoked_delegations_list.
- *
- * This list is later used in is_stateid_revoked() to return
- * NFS4ERR_DELEG_REVOKED for any I/O or state ops referring to such a
- * revoked delegation. The entry remains until explicitly removed by
- * remove_revoked_stateid().
- *
- * @param[in] state Pointer to the delegation state to be marked revoked.
- */
-static void add_to_revoked_delegations(state_t *state)
-{
-	struct revoked_delegation *entry = malloc(sizeof(*entry));
-
-	if (!entry) {
-		LogCrit(COMPONENT_NFS_V4,
-			"Out of memory: cannot add revoked delegation");
-		return;
-	}
-
-	entry->stateid.seqid = state->state_seqid;
-	memcpy(entry->stateid.other, state->stateid_other,
-	       sizeof(entry->stateid.other));
-
-	pthread_mutex_lock(&revoked_delegations_lock);
-	glist_add(&revoked_delegations_list, &entry->list);
-	pthread_mutex_unlock(&revoked_delegations_lock);
-
-	LogDebug(
-		COMPONENT_NFS_V4,
-		"Added revoked delegation stateid seqid=%u other=%*phN to revoked list",
-		entry->stateid.seqid, (int)sizeof(entry->stateid.other),
-		entry->stateid.other);
-}
-
-/**
  * @brief Mark a delegation revoked
  *
  * Mark the delegation state revoked, further ops on this state should return
@@ -608,15 +491,6 @@ nfsstat4 deleg_revoke(struct fsal_obj_handle *obj, struct state_t *deleg_state)
 	/* Build op_context for state_unlock_locked */
 	init_op_context_simple(&op_context, export, export->fsal_export);
 	op_ctx->clientid = &clid->cid_clientid;
-
-	LogDebug(COMPONENT_STATE,
-		 "Revoking delegation %p for client %p on object %p",
-		 deleg_state, clid, obj);
-
-	/* Adding the delegation state to a list that is being revoked
-	 * which will be cleaned up when client sends OP_FREE_STATEID
-	 */
-	add_to_revoked_delegations(deleg_state);
 
 	/* release_lease_lock() returns delegation to FSAL */
 	state_status = release_lease_lock(obj, deleg_state);
