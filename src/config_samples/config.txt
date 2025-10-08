@@ -469,6 +469,8 @@ EXPORT {}
 
 	DisableReaddirPlus(bool, default false)
 
+	DisableDirCaching(bool, default false)
+
 	Trust_Readdir_Negative_Cache(bool, default false)
 
 	* The following options may have limits on dynamic effect

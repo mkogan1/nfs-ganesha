@@ -250,6 +250,14 @@ MaxOffsetRead (INT64_MAX)
 
 DisableReaddirPlus(bool, default false)
 
+DisableDirChaching(bool, default false)
+   One can disable directory chaching using this option. Default value is
+   enable directory chaching which helps in better performance for readdir
+   operation.
+   For highly changing export (outside of NFS workload) or where FSAL is
+   recommending not to use directory chaching (like CEPH), then one can use
+   this option to disable it.
+
 Trust_Readdir_Negative_Cache(bool, default false)
 
 The following options may have limits on dynamic effect

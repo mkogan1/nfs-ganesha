@@ -132,6 +132,12 @@ EXPORT_DEFAULTS
 #					These options may be used to restrict
 #					the offsets within files.
 #
+# DisableDirChaching (false)   Disable directory chaching for this export.
+#                              If set to true, directory entries will not be
+#                              cached. This option helps in certain cases like
+#                              if export contents are changing outside of NFS
+#                              or if FSAL is not recomending to cache dentries
+#
 # CLIENT (optional)	See the CLIENT block below
 #
 # FSAL (required)	See the FSAL block below

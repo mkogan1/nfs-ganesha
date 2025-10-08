@@ -87,6 +87,8 @@ struct exportlist_client_entry {
 /* Constants for export options masks */
 #define EXPORT_OPTION_FSID_SET 0x00000001 /* Set if Filesystem_id is set */
 #define EXPORT_OPTION_USE_COOKIE_VERIFIER 0x00000002 /* Use cookie verifier */
+/** Controls whether dentry caching is allowed */
+#define EXPORT_OPTION_NO_DIR_CACHING 0x00000004
 /** Controls whether a directory's dirent cache is trusted for
     negative results. */
 #define EXPORT_OPTION_TRUST_READIR_NEGATIVE_CACHE 0x00000008
