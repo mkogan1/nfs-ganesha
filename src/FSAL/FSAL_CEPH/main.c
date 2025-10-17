@@ -102,6 +102,7 @@ struct ceph_fsal_module
 				    .allocate_own_read_buffer = false,
 #endif
 				    .expire_time_parent = -1,
+				    .readdir_mode = FSAL_RDDIR_CHUNK_NEVER,
 			    } } };
 
 static int ceph_conf_commit(void *node, void *link_mem, void *self_struct,

@@ -114,8 +114,7 @@ fsal_status_t mdcache_alloc_and_check_handle(
 					   MDCACHE_TRUST_ATTRS);
 	}
 
-	if ((mdcache_param.dir.avl_chunk != 0) &&
-	    (!op_ctx_export_has_option(EXPORT_OPTION_NO_DIR_CACHING))) {
+	if (get_readdir_mode() == FSAL_RDDIR_CHUNK_ALWAYS) {
 		/* Add this entry to the directory (also takes an internal ref)
 		 */
 		status =
@@ -509,8 +508,7 @@ static fsal_status_t mdcache_link(struct fsal_obj_handle *obj_hdl,
 		return status;
 	}
 
-	if ((mdcache_param.dir.avl_chunk != 0) &&
-	    (!op_ctx_export_has_option(EXPORT_OPTION_NO_DIR_CACHING))) {
+	if (get_readdir_mode() == FSAL_RDDIR_CHUNK_ALWAYS) {
 		PTHREAD_RWLOCK_wrlock(&dest->content_lock);
 
 		/* Add this entry to the directory (also takes an internal ref)
@@ -558,12 +556,16 @@ static fsal_status_t mdcache_readdir(struct fsal_obj_handle *dir_hdl,
 {
 	mdcache_entry_t *directory =
 		container_of(dir_hdl, mdcache_entry_t, obj_handle);
+	enum fsal_readdir_mode dirmode = get_readdir_mode();
+
 	if (!(directory->obj_handle.type == DIRECTORY))
 		return fsalstat(ERR_FSAL_NOTDIR, 0);
 
-	if ((mdcache_param.dir.avl_chunk == 0) ||
-	    (op_ctx_export_has_option(EXPORT_OPTION_NO_DIR_CACHING))) {
+	if (dirmode == FSAL_RDDIR_CHUNK_NEVER) {
 		/* Not caching dirents; pass through directly to FSAL */
+		LogDebugAlt(COMPONENT_NFS_READDIR, COMPONENT_MDCACHE,
+			    "Calling FSAL readdir directly");
+
 		return mdcache_readdir_uncached(directory, whence, dir_state,
 						cb, attrmask, eod_met);
 	} else {
@@ -755,8 +757,7 @@ static fsal_status_t mdcache_rename(struct fsal_obj_handle *obj_hdl,
 		/* Handle key is changing.  This means the old handle is
 		 * useless.  Mark it unreachable, forcing a lookup next time */
 		mdc_unreachable(mdc_obj);
-	} else if ((mdcache_param.dir.avl_chunk != 0) &&
-		   (!op_ctx_export_has_option(EXPORT_OPTION_NO_DIR_CACHING))) {
+	} else if (get_readdir_mode() == FSAL_RDDIR_CHUNK_ALWAYS) {
 		bool invalidate = true;
 
 		LogDebug(COMPONENT_MDCACHE,

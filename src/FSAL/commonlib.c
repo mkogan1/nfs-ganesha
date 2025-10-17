@@ -420,6 +420,8 @@ void display_fsinfo(struct fsal_module *fsal)
 		 fsal->fs_info.expire_time_parent);
 	LogDebug(COMPONENT_FSAL, "  xattr_support = %d  ",
 		 fsal->fs_info.xattr_support);
+	LogDebug(COMPONENT_FSAL, "  readdir_mode = %d  ",
+		 fsal->fs_info.readdir_mode);
 	LogDebug(COMPONENT_FSAL, "}");
 }
 

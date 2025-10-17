@@ -60,8 +60,10 @@ static struct config_item mdcache_params[] = {
 		       cache_size),
 	CONF_ITEM_BOOL("Use_Getattr_Directory_Invalidation", false,
 		       mdcache_parameter, getattr_dir_invalidation),
-	CONF_ITEM_UI32("Dir_Chunk", 0, UINT32_MAX, 128, mdcache_parameter,
-		       dir.avl_chunk),
+	CONF_ITEM_BOOL("Dir_Chunk_Enable", true, mdcache_parameter,
+		       dir.avl_chunk_enabled),
+	CONF_ITEM_UI32("Dir_Chunk", 0, UINT32_MAX, MDCACHE_AVL_CHUNK_DEFAULT,
+		       mdcache_parameter, dir.avl_chunk),
 	CONF_ITEM_UI32("Detached_Mult", 1, UINT32_MAX, 1, mdcache_parameter,
 		       dir.avl_detached_mult),
 	CONF_ITEM_UI32("Entries_HWMark", 1, UINT32_MAX, 100000,
@@ -150,6 +152,20 @@ int mdcache_set_param_from_conf(config_file_t parse_tree,
 		LogCrit(COMPONENT_INIT,
 			"Error while parsing MDCACHE specific configuration");
 		return -1;
+	}
+
+	/* Fixup avl chunking parameters for old config that uses
+	   Dir_Chunk = 0 to disable directory chunking. If Dir_Chunk was not
+	   set to zero in the old style, then it was enabled, so nothing to do.
+	 */
+	if (mdcache_param.dir.avl_chunk == 0) {
+		/* Set avl_chunk back to default */
+		mdcache_param.dir.avl_chunk = MDCACHE_AVL_CHUNK_DEFAULT;
+
+		/* And use the new avl_chunk_enabled */
+		mdcache_param.dir.avl_chunk_enabled = false;
+
+		/* And now the rest of the code works as newly specced. */
 	}
 
 	/* Compute avl_chunk_split after reading config, make sure it's a

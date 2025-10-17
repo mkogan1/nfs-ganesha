@@ -1143,8 +1143,7 @@ fsal_status_t mdc_try_get_cached(mdcache_entry_t *mdc_parent, const char *name,
 	*entry = NULL;
 
 	/* If aren't caching dirents, return stale */
-	if ((mdcache_param.dir.avl_chunk == 0) ||
-	    (op_ctx_export_has_option(EXPORT_OPTION_NO_DIR_CACHING)))
+	if (get_readdir_mode() == FSAL_RDDIR_CHUNK_NEVER)
 		return fsalstat(ERR_FSAL_STALE, 0);
 
 	/* If the dirent cache is untrustworthy, don't even ask it */
@@ -1248,8 +1247,7 @@ fsal_status_t mdc_lookup(mdcache_entry_t *mdc_parent, const char *name,
 
 	PTHREAD_RWLOCK_rdlock(&mdc_parent->content_lock);
 
-	if ((mdcache_param.dir.avl_chunk == 0) ||
-	    (op_ctx_export_has_option(EXPORT_OPTION_NO_DIR_CACHING))) {
+	if (get_readdir_mode() == FSAL_RDDIR_CHUNK_NEVER) {
 		/* We aren't caching dirents; call directly.
 		 * NOTE: Technically we will call mdc_lookup_uncached not
 		 *       holding the content_lock write as required, however
@@ -1574,10 +1572,9 @@ void mdcache_dirent_remove(mdcache_entry_t *parent, const char *name)
 #ifdef DEBUG_MDCACHE
 	assert(parent->content_lock.__data.__cur_writer);
 #endif
-	/* Don't remove if we aren't doing dirent caching or the cache is empty
+	/* Only remove if we are doing dirent caching and the cache is not empty
 	 */
-	if (mdcache_param.dir.avl_chunk != 0 &&
-	    !op_ctx_export_has_option(EXPORT_OPTION_NO_DIR_CACHING) &&
+	if (get_readdir_mode() == FSAL_RDDIR_CHUNK_ALWAYS &&
 	    avltree_size(&parent->fsobj.fsdir.avl.t) != 0) {
 		mdcache_dir_entry_t *dirent;
 

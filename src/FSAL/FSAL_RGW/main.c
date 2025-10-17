@@ -76,6 +76,7 @@ struct rgw_fsal_module
 #ifdef USE_FSAL_RGW_XATTRS
 				   .xattr_support = true,
 #endif
+				   .readdir_mode = FSAL_RDDIR_CHUNK_ALWAYS,
 			   } } };
 
 static struct config_item rgw_items[] = {

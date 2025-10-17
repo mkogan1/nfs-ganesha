@@ -166,9 +166,15 @@ uint32_t fsal_umask(struct fsal_staticfsinfo_t *info)
 {
 	return info->umask;
 }
+
 int32_t fsal_expiretimeparent(struct fsal_staticfsinfo_t *info)
 {
 	return info->expire_time_parent;
+}
+
+enum fsal_readdir_mode fsal_readdir_mode(struct fsal_staticfsinfo_t *info)
+{
+	return info->readdir_mode;
 }
 
 /** @} */

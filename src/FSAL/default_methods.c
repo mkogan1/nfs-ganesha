@@ -575,6 +575,18 @@ static int32_t fs_expiretimeparent(struct fsal_export *exp_hdl)
 	return fsal_expiretimeparent(&exp_hdl->fsal->fs_info);
 }
 
+/**
+ * @brief Get the readdir modes for parent handle.
+ *
+ * @param[in] exp_hdl The public export
+ *
+ * @return Readdir modes for parent handle
+ */
+static enum fsal_readdir_mode fs_readdir_mode(struct fsal_export *exp_hdl)
+{
+	return fsal_readdir_mode(&exp_hdl->fsal->fs_info);
+}
+
 /* check_quota
  * return happiness for now.
  */
@@ -749,6 +761,7 @@ struct export_ops def_export_ops = {
 	.alloc_state = alloc_state,
 	.is_superuser = is_superuser,
 	.fs_expiretimeparent = fs_expiretimeparent,
+	.fs_readdir_mode = fs_readdir_mode,
 };
 
 /* fsal_obj_handle common methods

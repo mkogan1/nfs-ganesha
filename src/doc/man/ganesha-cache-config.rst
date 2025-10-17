@@ -30,10 +30,16 @@ Cache_Size(uint32, range 1 to UINT32_MAX, default 32633)
 Use_Getattr_Directory_Invalidation(bool, default false)
     Use getattr for directory invalidation.
 
+Dir_Chunk_Enable(bool, default true)
+    Enable or disable directory chunking. Set this false in preference to
+    setting Dir_Chunk to 0.
+
 Dir_Chunk(uint32, range 0 to UINT32_MAX, default 128)
     Size of per-directory dirent cache chunks, 0 means directory chunking is not
     enabled. Dir_Chunk should always be enabled. Most FSAL modules especially
     FSAL_RGW/FSAL_GLUSTER need it to make readdir work well.
+    Note that if set to 0, Dir_Chunk_Enable will be set to false and Dir_Chunk
+    will be set to the default of 128.
 
 Detached_Mult(uint32, range 1 to UINT32_MAX, default 1)
     Max number of detached directory entries expressed as a multiple of the

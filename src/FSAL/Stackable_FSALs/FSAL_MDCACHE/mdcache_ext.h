@@ -33,6 +33,8 @@
 #ifndef MDCACHE_EXT_H
 #define MDCACHE_EXT_H
 
+#include "nfs_exports.h"
+
 /**
  * @defgroup config_mdcache Structure and defaults for MDCACHE
  *
@@ -42,6 +44,8 @@
 /**
  * @brief Structure to hold MDCACHE parameters
  */
+
+#define MDCACHE_AVL_CHUNK_DEFAULT 128
 
 struct mdcache_parameter {
 	/** Partitions in the MDCACHE tree.  Defaults to 7,
@@ -54,6 +58,8 @@ struct mdcache_parameter {
 	    false.  Settable with Use_Getattr_Directory_Invalidation. */
 	bool getattr_dir_invalidation;
 	struct {
+		/** Enable directory chunking */
+		bool avl_chunk_enabled;
 		/** Size of per-directory dirent cache chunks, 0 means
 		 *  directory chunking is not enabled.
 		 */
@@ -147,6 +153,26 @@ struct mdcache_parameter {
 };
 
 extern struct mdcache_parameter mdcache_param;
+
+static inline enum fsal_readdir_mode get_readdir_mode(void)
+{
+	enum fsal_readdir_mode dirmode;
+
+	dirmode = op_ctx->fsal_export->exp_ops.fs_readdir_mode(
+		op_ctx->fsal_export);
+
+	if (dirmode == FSAL_RDDIR_CHUNK_USE_CONFIG) {
+		/* Check config for allowed dirmode */
+		if (!mdcache_param.dir.avl_chunk_enabled ||
+		    op_ctx_export_has_option(EXPORT_OPTION_NO_DIR_CACHING))
+			dirmode = FSAL_RDDIR_CHUNK_NEVER;
+		else
+			dirmode = FSAL_RDDIR_CHUNK_ALWAYS;
+	}
+
+	return dirmode;
+}
+
 /** @} */
 
 #endif /* MDCACHE_EXT_H */

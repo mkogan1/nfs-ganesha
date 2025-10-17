@@ -1393,6 +1393,16 @@ struct export_ops {
  */
 
 	int32_t (*fs_expiretimeparent)(struct fsal_export *exp_hdl);
+
+	/**
+ * @brief Get the readdir modes for parent handle.
+ *
+ * @param[in] exp_hdl Filesystem to interrogate
+ *
+ * @return Expiration time for parent handle
+ */
+
+	enum fsal_readdir_mode (*fs_readdir_mode)(struct fsal_export *exp_hdl);
 };
 
 /**

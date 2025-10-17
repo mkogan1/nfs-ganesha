@@ -624,6 +624,12 @@ enum fsal_create_mode {
 	FSAL_EXCLUSIVE_9P,
 };
 
+enum fsal_readdir_mode {
+	FSAL_RDDIR_CHUNK_USE_CONFIG, /* Default value */
+	FSAL_RDDIR_CHUNK_ALWAYS,
+	FSAL_RDDIR_CHUNK_NEVER,
+};
+
 /** File system static info. */
 
 /* enums for accessing
@@ -725,6 +731,7 @@ typedef struct fsal_staticfsinfo_t {
 				       set this to -1. Else set it to some
 				       positive value. Defaults to -1. */
 	bool preserve_unlinked; /*< FSAL preserves unlinked files */
+	enum fsal_readdir_mode readdir_mode; /*< Supported readdir modes */
 } fsal_staticfsinfo_t;
 
 /**
