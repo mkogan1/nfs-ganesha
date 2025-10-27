@@ -55,6 +55,7 @@
 #include "config_parsing.h"
 #include "pwnam_wrappers.h"
 #include "nfs_qos.h"
+#include "nfs_cluster_qos.h"
 #include "gsh_tls.h"
 
 /**
@@ -211,6 +212,10 @@ static struct config_item core_params[] = {
 	CONF_ITEM_UI16("Rquota_Port", 0, UINT16_MAX, RQUOTA_PORT,
 		       nfs_core_param, port[P_RQUOTA]),
 #endif
+#ifdef ENABLE_CLUSTER_QOS
+       CONF_ITEM_UI16("Cqos_Port", 0, UINT16_MAX, CQOS_PORT,
+                      nfs_core_param, port[P_CQOS]),
+#endif
 #ifdef _USE_NFS_RDMA
 	CONF_ITEM_UI16("NFS_RDMA_Port", 0, UINT16_MAX, NFS_RDMA_PORT,
 		       nfs_core_param, port[P_NFS_RDMA]),
@@ -233,6 +238,10 @@ static struct config_item core_params[] = {
 #ifdef _USE_RQUOTA
 	CONF_ITEM_UI32("Rquota_Program", 1, INT32_MAX, RQUOTAPROG,
 		       nfs_core_param, program[P_RQUOTA]),
+#endif
+#ifdef ENABLE_CLUSTER_QOS
+       CONF_ITEM_UI32("Cqos_Program", 1, INT32_MAX, CQOSPROG,
+                      nfs_core_param, program[P_CQOS]),
 #endif
 #ifdef USE_NFSACL3
 	CONF_ITEM_UI32("NFSACL_Program", 1, INT32_MAX, NFSACLPROG,
@@ -422,6 +431,12 @@ static struct config_item_list qos_types_supported[] = {
 
 static struct config_item qos_global_params[] = {
 	CONF_ITEM_BOOL("enable_qos", false, qos_block_config, enable_qos),
+#if ENABLE_CLUSTER_QOS
+       CONF_ITEM_BOOL("enable_cluster_qos", true, qos_block_config,
+                       enable_cluster_qos),
+       CONF_ITEM_UI32("cqos_msg_interval", CQOS_MIN_MSGTIME, CQOS_MAX_MSGTIME,
+                      CQOS_DEF_MSGTIME, qos_block_config, cqos_msg_interval),
+#endif
 
 	CONF_ITEM_BOOL("enable_tokens", false, qos_block_config, enable_tokens),
 	CONF_ITEM_BOOL("enable_bw_control", false, qos_block_config,
@@ -519,6 +534,40 @@ struct config_block qos_core = {
 };
 
 #endif
+
+
+
+#if defined(ENABLE_QOS) && defined(ENABLE_CLUSTER_QOS)
+static int cqos_node_addr(const char *token, enum term_type type_hint,
+                             struct config_item *item, void *param_addr,
+                             void *cnode, struct config_error_type *err_type)
+{
+       int rc;
+
+       LogMidDebug(COMPONENT_CONFIG, "Adding node %s", token);
+
+       rc = add_ceph_nodes(COMPONENT_CONFIG, &cqos_hosts, token, type_hint,
+                           cnode, err_type);
+       return rc;
+}
+
+static struct config_item cqos_global_params[] = {
+       CONF_ITEM_PROC_MULT("Ceph_Nodes", noop_conf_init, cqos_node_addr,
+                           cqos_ceph_nodes, node_list),
+       CONFIG_EOL
+};
+
+struct config_block cqos_core = {
+       .dbus_interface_name = "org.ganesha.nfsd.config.cqos",
+       .blk_desc.name = "CEPH_NODES_LIST",
+       .blk_desc.type = CONFIG_BLOCK,
+       .blk_desc.flags = CONFIG_UNIQUE, /* too risky to have more */
+       .blk_desc.u.blk.init = noop_conf_init,
+       .blk_desc.u.blk.params = cqos_global_params,
+       .blk_desc.u.blk.commit = noop_conf_commit
+};
+#endif
+
 /**
  * @brief Kerberos/GSSAPI parameters
  */

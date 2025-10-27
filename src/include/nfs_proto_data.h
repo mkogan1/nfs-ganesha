@@ -49,6 +49,7 @@
 #include "nfs4.h"
 #include "nlm4.h"
 #include "nfsacl.h"
+#include "cqos.h"
 
 /* ------------------------------ Typedefs and structs----------------------- */
 
@@ -104,6 +105,9 @@ typedef union nfs_arg__ {
 	/* NFSACL */
 	getaclargs arg_getacl;
 	setaclargs arg_setacl;
+
+       /*Cluster QoS */
+       cluster_qos_msg arg_cqos_msg;
 } nfs_arg_t;
 
 struct COMPOUND4res_extended {

@@ -105,7 +105,7 @@ prometheus_exposer__start(const sockaddr_t *UNUSED(addr), uint16_t UNUSED(port),
 {
 }
 
-prometheus_exposer__stop(prometheus_registry_handle_t UNUSED(registry_handle))
+void prometheus_exposer__stop(prometheus_registry_handle_t UNUSED(registry_handle))
 {
 }
 #endif /* USE_MONITORING */

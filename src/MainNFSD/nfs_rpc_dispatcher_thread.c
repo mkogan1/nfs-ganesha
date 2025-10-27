@@ -64,6 +64,7 @@
 #include "nfs_file_handle.h"
 #include "xprt_handler.h"
 #include "connection_manager.h"
+#include "nfs_cluster_qos.h"
 
 #include "gsh_lttng/gsh_lttng.h"
 #if defined(USE_LTTNG) && !defined(LTTNG_PARSING)
@@ -141,6 +142,9 @@ const char *tags[P_COUNT] = {
 #endif
 #ifdef _USE_NFS_RDMA
 	"NFS_RDMA",
+#endif
+#ifdef ENABLE_CLUSTER_QOS
+       "CQOS",
 #endif
 };
 
@@ -222,6 +226,10 @@ static void unregister_rpc(void)
 		unregister(NFS_program[P_NFSACL], NFSACL_V3, NFSACL_V3);
 	}
 #endif
+#if defined(ENABLE_QOS) && defined(ENABLE_CLUSTER_QOS)
+       if (cqos_initialized)
+               unregister(NFS_program[P_CQOS], 1, CQOS_VERS);
+#endif
 }
 
 static inline bool nfs_protocol_enabled(protos p)
@@ -261,6 +269,12 @@ static inline bool nfs_protocol_enabled(protos p)
 			return true;
 		}
 		break;
+#endif
+#if defined(ENABLE_QOS) && defined(ENABLE_CLUSTER_QOS)
+       case P_CQOS:
+               if (cqos_initialized)
+                       return true;
+               break;
 #endif
 
 	default:
@@ -403,6 +417,9 @@ const svc_xprt_fun_t udp_dispatch[] = {
 #ifdef _USE_NFS_RDMA
 	NULL,
 #endif
+#ifdef ENABLE_CLUSTER_QOS
+       NULL,
+#endif
 };
 
 static enum xprt_stat nfs_rpc_dispatch_remote_addr_set_tcp(SVCXPRT *xprt)
@@ -532,6 +549,17 @@ static enum xprt_stat nfs_rpc_dispatch_RDMA(SVCXPRT *xprt)
 }
 #endif
 
+#if defined(ENABLE_QOS) && defined(ENABLE_CLUSTER_QOS)
+static enum xprt_stat nfs_rpc_dispatch_CQOS(SVCXPRT *xprt)
+{
+       LogFullDebug(COMPONENT_DISPATCH,
+                    "CQOS TCP request on SVCXPRT %p fd %d", xprt,
+                    xprt->xp_fd);
+       xprt->xp_dispatch.process_cb = nfs_rpc_valid_CQOS;
+       return nfs_rpc_tcp_user_data(xprt);
+}
+#endif
+
 const svc_xprt_fun_t tcp_dispatch[P_COUNT] = {
 	nfs_rpc_dispatch_tcp_NFS,
 #ifdef _USE_NFS3
@@ -551,6 +579,9 @@ const svc_xprt_fun_t tcp_dispatch[P_COUNT] = {
 #endif
 #ifdef _USE_NFS_RDMA
 	nfs_rpc_dispatch_RDMA,
+#endif
+#if defined(ENABLE_QOS) && defined(ENABLE_CLUSTER_QOS)
+       nfs_rpc_dispatch_CQOS,
 #endif
 };
 
@@ -1517,6 +1548,11 @@ void nfs_Init_svc(void)
 		Register_program(P_RQUOTA, EXT_RQUOTAVERS);
 	}
 #endif
+#if defined(ENABLE_QOS) && defined(ENABLE_CLUSTER_QOS)
+       if (cqos_initialized)
+               Register_program(P_CQOS, CQOS_VERS);
+#endif
+
 #endif /* RPCBIND */
 }
 

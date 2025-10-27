@@ -83,6 +83,7 @@
 #include "FSAL/fsal_localfs.h"
 #include "nfs_qosmgr.h"
 #include "nfs_qos.h"
+#include "nfs_cluster_qos.h"
 #include "nfs_metrics.h"
 #include "sal_metrics.h"
 #include "gsh_tls.h"
@@ -695,6 +696,33 @@ int nfs_set_param_from_conf(config_file_t parse_tree,
 	if (qos_block_config.enable_qos)
 		qos_init();
 
+#endif
+
+#if defined(ENABLE_QOS) && defined(ENABLE_CLUSTER_QOS)
+       struct dummy_cqos {
+               void *dummy;
+       };
+
+       struct dummy_cqos dummy_cqos_conf;
+       /* Cluster QoS global parameters */
+       (void)load_config_from_parse(parse_tree, &cqos_core, &dummy_cqos_conf,
+                                       true, err_type);
+       if (!config_error_is_harmless(err_type)) {
+               LogCrit(COMPONENT_INIT,
+                       "Error while parsing cluster qos configuration");
+               return -1;
+       }
+
+       /*
+        * Cluster qos should be initialized only if QoS is enabled, and
+        * user should provide one Ip address of each available ceph node
+        * in the cluster.
+        */
+       if (qos_block_config.enable_qos &&
+           qos_block_config.enable_cluster_qos &&
+           !glist_empty(&cqos_hosts)) {
+               cluster_qos_init();
+       }
 #endif
 
 	/* Worker parameters: ip/name hash table and expiration

@@ -64,6 +64,7 @@
 #include "client_mgr.h"
 #include "export_mgr.h"
 #include "nfs_qos.h"
+#include "nfs_cluster_qos.h"
 #include "server_stats_private.h"
 #include "abstract_atomic.h"
 #include "gsh_intrinsic.h"
@@ -1548,6 +1549,100 @@ out:
 	gsh_free(cli);
 	return errcnt;
 }
+
+#if defined(ENABLE_QOS) && defined(ENABLE_CLUSTER_QOS)
+int add_ceph_nodes(enum log_components component,
+                  struct glist_head *client_list,
+                  const char *client_tok, enum term_type type_hint,
+                  void *cnode, struct config_error_type *err_type)
+{
+       int errcnt = 0;
+       CIDR *cidr;
+       struct cqos_ceph_nodes *cli;
+       struct in_addr *ipv4;
+       struct in6_addr *ipv6;
+
+       cli = gsh_calloc(1, sizeof(struct cqos_ceph_nodes));
+       glist_init(&cli->node_list);
+       cli->fd = -1;
+       cli->is_my_ip = false;
+       cli->clnt = NULL;
+
+       switch (type_hint) {
+       case TERM_V4CIDR:
+               err_type->invalid = true;
+               errcnt++;
+               goto out;
+       case TERM_V6CIDR:
+               err_type->invalid = true;
+               errcnt++;
+               goto out;
+       case TERM_V4ADDR:
+       case TERM_V6ADDR:
+               if (is_self_address(client_tok) == true)
+                       cli->is_my_ip = true;
+               cidr = cidr_from_str(client_tok);
+               if (cidr == NULL) {
+                       switch (type_hint) {
+                       case TERM_V4CIDR:
+                               break;
+                       case TERM_V6CIDR:
+                               break;
+                       case TERM_V4ADDR:
+                               config_proc_error(
+                                       cnode, err_type,
+                                       "Incorrect IPv4 addr (%s)",
+                                       client_tok);
+                               break;
+                       case TERM_V6ADDR:
+                               config_proc_error(
+                                       cnode, err_type,
+                                       "Incorrect IPv6 addr (%s)",
+                                       client_tok);
+                               break;
+                       default:
+                               break;
+                       }
+                       err_type->invalid = true;
+                       errcnt++;
+                       goto out;
+               }
+               if (type_hint == TERM_V4ADDR) {
+                       cli->node_addr.ss_family = AF_INET;
+                       ipv4 = cidr_to_inaddr(cidr, NULL);
+                       ((struct sockaddr_in *)&cli->node_addr)->sin_addr =
+                                                                       *ipv4;
+               } else if (type_hint == TERM_V6ADDR) {
+                       cli->node_addr.ss_family = AF_INET6;
+                       ipv6 = cidr_to_in6addr(cidr, NULL);
+                       ((struct sockaddr_in6 *)&cli->node_addr)->sin6_addr =
+                                                                       *ipv6;
+               }
+               break;
+       case TERM_REGEX:
+               err_type->invalid = true;
+               errcnt++;
+               goto out;
+       case TERM_TOKEN:
+               err_type->invalid = true;
+               errcnt++;
+               goto out;
+       default:
+               config_proc_error(cnode, err_type,
+                                 "Expected a client, got a %s for (%s)",
+                                 config_term_desc(type_hint), client_tok);
+               err_type->bogus = true;
+               errcnt++;
+               goto out;
+       }
+
+       glist_add_tail(client_list, &cli->node_list);
+       cli = NULL;
+out:
+       gsh_free(cli);
+       return errcnt;
+}
+#endif
 
 /**
  * @brief Match a specific client in a client list
