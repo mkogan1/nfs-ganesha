@@ -75,7 +75,7 @@ void rados_kv_add_clid_impl(nfs_client_id_t *clientid, char *rados_obj);
 void rados_kv_rm_clid(nfs_client_id_t *clientid);
 void rados_kv_rm_clid_impl(nfs_client_id_t *clientid, char *rados_obj);
 void rados_kv_add_revoke_fh(nfs_client_id_t *delr_clid, nfs_fh4 *delr_handle);
-
+void register_nfs_service(void);
 /**
  * Convert a clientid into a rados key.
  *
