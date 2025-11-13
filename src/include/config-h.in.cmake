@@ -117,7 +117,7 @@
 #cmakedefine SANITIZE_ADDRESS 1
 #cmakedefine USE_TLS 1
 #cmakedefine USE_OPENSSL 1
-#cmakedefine USE_gnutls 1
+#cmakedefine USE_GNUTLS 1
 #cmakedefine DEBUG_MDCACHE 1
 #cmakedefine ENABLE_QOS 1
 #cmakedefine USE_RADOS_RECOV 1

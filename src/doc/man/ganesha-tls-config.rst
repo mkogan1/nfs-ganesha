@@ -74,28 +74,25 @@ eg2: Use the tlshd. (Install ktls-utils)
 	-> start tlshd
         -> mount -vv -t nfs -o vers=4 -o xprtsec=mtls -o rw 104.86.87.87:/exportfs0/ /mnt
 
-eg3: With latest linux-version 6.13+ , no need of tlshd, directly use mount command with xprtsec option.
-
-
 OPTIONS
 ------------------------------------------------------------------------------
 
-Note : EXPORT{} needs to be populated with proper Sectype = sys, mtls  (Sectype takes multiple options)
-or can be provided in EXPORT_DEFAULTS {Sectype = sys, mtls}
+Note : EXPORT{} needs to be populated with proper XprtSec = none or tls or mtls
+or can be provided in EXPORT_DEFAULTS {XprtSec = none/tls/mtls}
 This allows controlling of access at Export level.
 
 Server Export Security      | Client Mount Option | Expected Behavior
 --------------------------- | ------------------- | -------------------------------------------------------------
 no-tls (no encryption)      | (no xprtsec)        | Mount succeeds in plaintext (unencrypted TCP/UDP).
-i.e Sectype =               | xprtsec=tls         | Mount succeeds over TLS; encryption used even though not required.
+i.e XprtSec = none          | xprtsec=tls         | Mount succeeds over TLS; encryption used even though not required.
                             | xprtsec=mtls        | Mount succeeds over TLS; encryption used even though not required.
 
 tls (TLS required)          | (no xprtsec)        | Mount fails with EACCES ("Permission denied") - server rejects non-TLS connections.
-i.e Sectype = tls           | xprtsec=tls         | Mount succeeds over TLS; server certificate validated by client.
+i.e XprtSec = tls           | xprtsec=tls         | Mount succeeds over TLS; server certificate validated by client.
                             | xprtsec=mtls        | Mount succeeds over TLS; Even if client certificate fails, it doesnt matter.
 
 mtls (mutual TLS required)  | (no xprtsec)        | Mount fails with EACCES - client not attempting mTLS.
-i.e Sectype = mtls          | xprtsec=tls         | Mount fails with EACCES - mTLS required, i.e client should provide valid certificate to server.
+i.e XprtSec = mtls          | xprtsec=tls         | Mount fails with EACCES - mTLS required, i.e client should provide valid certificate to server.
                             | xprtsec=mtls        | Mount succeeds only if client presents valid certificate trusted by server; otherwise fails with EACCES.
 
 

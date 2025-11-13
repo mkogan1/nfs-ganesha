@@ -357,8 +357,10 @@ EXPORT_DEFAULTS {}
 
 	Anonymous_gid(anonid, range INT32MIN to UINT32MAX, default -2)
 
-	SecType(enum list, values [none, sys, krb5, krb5i, krb5p, tls, mtls],
+	SecType(enum list, values [none, sys, krb5, krb5i, krb5p],
 	        default [none, sys])
+
+	XprtSec(enum, values [none, tls, mtls], default none)
 
 	PrivilegedPort(bool, default false)
 
@@ -689,8 +691,10 @@ PSEUDOFS {}
 
 	Transports(enum list, values [UDP, TCP, RDMA], default [TCP])
 
-	SecType(enum list, values [none, sys, krb5, krb5i, krb5p, tls, mtls],
+	SecType(enum list, values [none, sys, krb5, krb5i, krb5p],
 	        default [none, sys, krb5, krb5i, krb5p])
+
+	XprtSec(enum , values [none, tls, mtls], default [none])
 
 	PrivilegedPort(bool, default false)
 

@@ -176,11 +176,12 @@ struct exportlist_client_entry {
 #define EXPORT_OPTION_RPCSEC_GSS_PRIV \
 	0x00010000 /*< RPCSEC_GSS PRIVACY supported */
 
+/* Transport Security Options - Used with XprtSec parameter */
 #define EXPORT_OPTION_TLS \
-	0x00020000 /*< RPCSEC_GSS PRIVACY supported */
+	0x00020000 /*< Transport TLS supported */
 
 #define EXPORT_OPTION_MTLS \
-	0x00040000 /*< RPCSEC_GSS PRIVACY supported */
+	0x00040000 /*< Transport MTLS supported */
 
 #define EXPORT_OPTION_AUTH_TYPES                                         \
 	(EXPORT_OPTION_AUTH_NONE | EXPORT_OPTION_AUTH_UNIX |             \
@@ -188,13 +189,14 @@ struct exportlist_client_entry {
 	 EXPORT_OPTION_RPCSEC_GSS_PRIV)
 
 #ifdef USE_TLS
-#define EXPORT_OPTION_AUTH_TYPES_TLS                                 \
-	(EXPORT_OPTION_AUTH_NONE | EXPORT_OPTION_AUTH_UNIX |             \
-	 EXPORT_OPTION_RPCSEC_GSS_NONE | EXPORT_OPTION_RPCSEC_GSS_INTG | \
-	 EXPORT_OPTION_RPCSEC_GSS_PRIV | EXPORT_OPTION_TLS | EXPORT_OPTION_MTLS)
+#define EXPORT_OPTION_XPRT_TYPES \
+	(EXPORT_OPTION_TLS | EXPORT_OPTION_MTLS)
 #else
-#define EXPORT_OPTION_AUTH_TYPES_TLS	EXPORT_OPTION_AUTH_TYPES
+#define EXPORT_OPTION_XPRT_TYPES	0
 #endif
+
+#define EXPORT_OPTION_XPRT_DEFAULTS \
+	0 /*< No transport security by default */
 
 #define EXPORT_OPTION_AUTH_DEFAULTS \
 	(EXPORT_OPTION_AUTH_NONE | EXPORT_OPTION_AUTH_UNIX)
