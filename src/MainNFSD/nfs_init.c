@@ -90,7 +90,6 @@
 #ifdef USE_GRPC
 #include "gRPC/GrpcServer.h"
 #endif /*USE_GRPC*/
-#include <dlfcn.h>
 
 pthread_mutexattr_t default_mutex_attr;
 pthread_rwlockattr_t default_rwlock_attr;
@@ -1307,28 +1306,6 @@ static void do_malloc_trim(void *param)
 }
 #endif
 
-#if USE_FSAL_CEPH
-static void register_to_ceph_cluster(void)
-{
-	void *dl = NULL;
-#if defined(LINUX) && !defined(SANITIZE_ADDRESS)
-	dl = dlopen("libganesha_rados_recov.so",
-		    RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
-#elif defined(BSDBASED) || defined(SANITIZE_ADDRESS)
-	dl = dlopen("libganesha_rados_urls.so", RTLD_NOW | RTLD_LOCAL);
-#endif
-	if (dl == NULL) {
-		fprintf(stderr, "Failed to load libganesha_rados_urls.so\n");
-		exit(1);
-	}
-
-	void (*register_nfs_fun_ptr)(void);
-
-	register_nfs_fun_ptr = dlsym(dl, "register_nfs_service");
-	register_nfs_fun_ptr();
-}
-#endif /* FSAL_CEPH */
-
 /**
  * @brief Start NFS service
  *
@@ -1389,11 +1366,6 @@ void nfs_start(nfs_start_info_t *p_start_info)
 	LogEvent(COMPONENT_INIT, "             NFS SERVER INITIALIZED");
 	LogEvent(COMPONENT_INIT,
 		 "-------------------------------------------------");
-
-#if USE_FSAL_CEPH
-	/* registering nfs service to RADOS for health status of ganesha*/
-	register_to_ceph_cluster();
-#endif
 
 	/* Set the time of NFS stat counting */
 	nfs_init_stats_time();
