@@ -295,8 +295,11 @@ static fsal_status_t ceph_fsal_readdir(struct fsal_obj_handle *dir_pub,
 			rc = ceph_fsal_get_sec_label(obj, &attrs);
 			if (rc < 0) {
 				fsal_status = ceph2fsal_error(rc);
-				if (i != NULL)
-					ceph_ll_put(export->cmount, i);
+				/* release the prepared attrs */
+				fsal_release_attrs(&attrs);
+				/* release the handle, which will release the
+				 * inode ref */
+				obj->handle.obj_ops->release(&obj->handle);
 				goto closedir;
 			}
 
