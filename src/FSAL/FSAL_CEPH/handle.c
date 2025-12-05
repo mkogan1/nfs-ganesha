@@ -114,9 +114,6 @@ static void ceph_fsal_release(struct fsal_obj_handle *obj_hdl)
 				      export);
 		if (obj != export->root)
 			deconstruct_handle(obj);
-	} else {
-		/* shutdown path, release the handle anyway */
-		deconstruct_handle(obj);
 	}
 }
 
