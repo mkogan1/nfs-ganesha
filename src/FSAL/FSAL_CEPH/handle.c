@@ -91,8 +91,7 @@ static void ceph_fsal_release(struct fsal_obj_handle *obj_hdl)
 	/* The private 'full' handle */
 	struct ceph_handle *obj =
 		container_of(obj_hdl, struct ceph_handle, handle);
-	struct ceph_export *export =
-		container_of(op_ctx->fsal_export, struct ceph_export, export);
+	struct ceph_export *export;
 
 	if (obj_hdl->type == REGULAR_FILE) {
 		fsal_status_t st;
@@ -109,8 +108,13 @@ static void ceph_fsal_release(struct fsal_obj_handle *obj_hdl)
 	GSH_AUTO_TRACEPOINT(fsal_ceph, ceph_release, TRACE_DEBUG,
 			    "CEPH release handle. fileid: {}", obj_hdl->fileid);
 
-	if (obj != export->root)
-		deconstruct_handle(obj);
+       if (op_ctx) {
+               /* not in shutdown path */
+               export = container_of(op_ctx->fsal_export, struct ceph_export,
+                                     export);
+               if (obj != export->root)
+                       deconstruct_handle(obj);
+       }
 }
 
 /**
@@ -295,8 +299,11 @@ static fsal_status_t ceph_fsal_readdir(struct fsal_obj_handle *dir_pub,
 			rc = ceph_fsal_get_sec_label(obj, &attrs);
 			if (rc < 0) {
 				fsal_status = ceph2fsal_error(rc);
-				if (i != NULL)
-					ceph_ll_put(export->cmount, i);
+				/* release the prepared attrs */
+                               fsal_release_attrs(&attrs);
+                               /* release the handle, which will release the
+                                * inode ref */
+                               obj->handle.obj_ops->release(&obj->handle);
 				goto closedir;
 			}
 
