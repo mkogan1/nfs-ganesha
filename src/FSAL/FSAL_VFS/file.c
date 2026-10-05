@@ -41,6 +41,7 @@
 #include <fcntl.h>
 #include <sys/uio.h>
 #include "vfs_methods.h"
+#include "vfs_io_uring.h"
 #include "os/subr.h"
 #include "sal_data.h"
 #include "../fsal_private.h"
@@ -1242,6 +1243,11 @@ void vfs_read2(struct fsal_obj_handle *obj_hdl, bool bypass,
 	       void *caller_arg)
 {
 	ssize_t nb_read;
+
+	if (read_arg->fsal_resume) {
+		vfs_uring_resume(obj_hdl, done_cb, read_arg, caller_arg);
+		return;
+	}
 	fsal_status_t status = { 0, 0 }, status2;
 	struct vfs_fd *my_fd;
 	struct vfs_fd temp_fd = { FSAL_FD_INIT, -1 };
@@ -1268,6 +1274,8 @@ void vfs_read2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		goto exit;
 	}
 
+	if (vfs_uring_queue_read(obj_hdl, bypass, done_cb, read_arg, caller_arg))
+		return;
 	/* Indicate a desire to start io and get a usable file descritor */
 	status = fsal_start_io(&out_fd, obj_hdl, &myself->u.file.fd.fsal_fd,
 			       &temp_fd.fsal_fd, read_arg->state, FSAL_O_READ,
@@ -1345,6 +1353,11 @@ void vfs_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		void *caller_arg)
 {
 	ssize_t nb_written;
+
+	if (write_arg->fsal_resume) {
+		vfs_uring_resume(obj_hdl, done_cb, write_arg, caller_arg);
+		return;
+	}
 	fsal_status_t status, status2;
 	int retval = 0;
 	struct vfs_fd *my_fd;
@@ -1363,6 +1376,9 @@ void vfs_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		goto exit;
 	}
 
+	if (vfs_uring_queue_write(obj_hdl, bypass, done_cb, write_arg,
+				 caller_arg))
+		return;
 	/* Indicate a desire to start io and get a usable file descritor */
 	status = fsal_start_io(&out_fd, obj_hdl, &myself->u.file.fd.fsal_fd,
 			       &temp_fd.fsal_fd, write_arg->state, FSAL_O_WRITE,

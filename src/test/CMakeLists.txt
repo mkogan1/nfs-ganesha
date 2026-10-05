@@ -67,3 +67,23 @@ SET(test_gsh_gethostname_SRCS
 add_executable(test_gsh_gethostname EXCLUDE_FROM_ALL ${test_gsh_gethostname_SRCS})
 target_link_libraries(test_gsh_gethostname ganesha_nfsd)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_executable(test_io_uring EXCLUDE_FROM_ALL test_io_uring.c)
+  add_sanitizers(test_io_uring)
+  target_link_libraries(test_io_uring ganesha_nfsd ${CMAKE_THREAD_LIBS_INIT})
+
+  # Include each caller's implementation to exercise its private resume state.
+  # Discard unrelated submission paths, which depend on the full FSAL module.
+  foreach(fsal VFS GPFS)
+    if(USE_FSAL_${fsal})
+      string(TOLOWER ${fsal} fsal_lower)
+      set(resume_test test_${fsal_lower}_io_uring_resume)
+      add_executable(${resume_test} EXCLUDE_FROM_ALL test_io_uring_resume.c)
+      add_sanitizers(${resume_test})
+      target_compile_definitions(${resume_test} PRIVATE TEST_${fsal})
+      target_compile_options(${resume_test} PRIVATE -ffunction-sections -fdata-sections)
+      set_property(TARGET ${resume_test} APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--gc-sections")
+      target_link_libraries(${resume_test} ganesha_nfsd ${CMAKE_THREAD_LIBS_INIT})
+    endif()
+  endforeach()
+endif()

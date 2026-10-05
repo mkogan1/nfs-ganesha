@@ -426,6 +426,15 @@ fsal_status_t vfs_create_export(struct fsal_module *fsal_hdl, void *parse_node,
 		fsal_status = posix2fsal_status(EINVAL);
 		goto err_free;
 	}
+	if (myself->use_io_uring) {
+		LogEvent(COMPONENT_FSAL,
+			 "VFS export %d (%s): io_uring enabled, queue_depth %u",
+			 op_ctx->ctx_export->export_id, CTX_FULLPATH(op_ctx),
+			 myself->io_uring_queue_depth);
+	} else {
+		LogEvent(COMPONENT_FSAL, "VFS export %d (%s): io_uring disabled",
+			 op_ctx->ctx_export->export_id, CTX_FULLPATH(op_ctx));
+	}
 	myself->export.fsal = fsal_hdl;
 	vfs_sub_init_export_ops(myself, CTX_FULLPATH(op_ctx));
 

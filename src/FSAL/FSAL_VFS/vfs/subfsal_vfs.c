@@ -55,6 +55,9 @@ static struct config_item export_params[] = {
 			fsid_type),
 	CONF_ITEM_BOOL("async_hsm_restore", true, vfs_fsal_export,
 		       async_hsm_restore),
+	CONF_ITEM_BOOL("io_uring", false, vfs_fsal_export, use_io_uring),
+	CONF_ITEM_UI32("io_uring_queue_depth", 128, 4096, 128, vfs_fsal_export,
+		       io_uring_queue_depth),
 	CONFIG_EOL
 };
 

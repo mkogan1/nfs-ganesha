@@ -44,6 +44,23 @@ GPFS {}
 
 **fsal_grace(bool, default false)**
 
+EXPORT { FSAL {} }
+--------------------------------------------------------------------------------
+**io_uring(bool, default false)**
+    Requires the daemon built with -DWITH_SYSTEM_LIBURING=ON (default OFF).
+    Submit normal GPFS reads and writes through io_uring on the file
+    descriptor opened for that file. The default remains the
+    OPENHANDLE_READ_BY_FD / OPENHANDLE_WRITE_BY_FD ioctl. READ_PLUS
+    stays on the ioctl path. If the ring cannot be created, I/O uses
+    the ioctl path.
+    A stable write (the client asked for DATA_SYNC or FILE_SYNC, or
+    NFS_Commit forced it) is submitted with RWF_SYNC.
+**io_uring_queue_depth(uint32, range 128 to 4096, default 128)**
+    io_uring SQ/CQ entries for each NFS worker thread that uses this
+    export. Rounded up to a power of two. This is the ring size. The
+    first successful ring init on a thread latches it. The submitting
+    thread waits when the SQ is full.
+
 See also
 ==============================
 :doc:`ganesha-log-config <ganesha-log-config>`\(8)

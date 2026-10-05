@@ -644,6 +644,9 @@ static struct config_item export_params[] = {
 	CONF_ITEM_NOOP("name"),
 	CONF_ITEM_BOOL("ignore_mode_change", false, gpfs_fsal_export,
 		       ignore_mode_change),
+	CONF_ITEM_BOOL("io_uring", false, gpfs_fsal_export, use_io_uring),
+	CONF_ITEM_UI32("io_uring_queue_depth", 128, 4096, 128, gpfs_fsal_export,
+		       io_uring_queue_depth),
 	CONFIG_EOL
 };
 
@@ -700,6 +703,16 @@ fsal_status_t gpfs_create_export(struct fsal_module *fsal_hdl, void *parse_node,
 			CTX_FULLPATH(op_ctx));
 		status.major = ERR_FSAL_INVAL;
 		goto free;
+	}
+	if (gpfs_exp->use_io_uring) {
+		LogEvent(COMPONENT_FSAL,
+			 "GPFS export %d (%s): io_uring enabled, queue_depth %u",
+			 op_ctx->ctx_export->export_id, CTX_FULLPATH(op_ctx),
+			 gpfs_exp->io_uring_queue_depth);
+	} else {
+		LogEvent(COMPONENT_FSAL,
+			 "GPFS export %d (%s): io_uring disabled",
+			 op_ctx->ctx_export->export_id, CTX_FULLPATH(op_ctx));
 	}
 
 	status.minor = fsal_attach_export(fsal_hdl, &exp->exports);

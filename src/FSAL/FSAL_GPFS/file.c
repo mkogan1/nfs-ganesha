@@ -44,6 +44,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include "gpfs_methods.h"
+#include "gpfs_io_uring.h"
 
 #define STATE2FD(s) (&container_of(s, struct gpfs_state_fd, state)->gpfs_fd)
 extern uint64_t get_handle2inode(struct gpfs_file_handle *gfh);
@@ -804,6 +805,11 @@ void gpfs_read2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		void *caller_arg)
 {
 	fsal_status_t status, status2;
+
+	if (read_arg->fsal_resume) {
+		gpfs_uring_resume(obj_hdl, done_cb, read_arg, caller_arg);
+		return;
+	}
 	struct gpfs_fd *my_fd;
 	struct gpfs_fd temp_fd = { FSAL_FD_INIT, -1 };
 	struct fsal_fd *out_fd;
@@ -826,7 +832,9 @@ void gpfs_read2(struct fsal_obj_handle *obj_hdl, bool bypass,
 			read_arg, caller_arg);
 		return;
 	}
-
+	/* READ_PLUS stays on the ioctl path inside queue_read. */
+	if (gpfs_uring_queue_read(obj_hdl, bypass, done_cb, read_arg, caller_arg))
+		return;
 	/* Indicate a desire to start io and get a usable file descritor */
 	status = fsal_start_io(&out_fd, obj_hdl, &myself->u.file.fd.fsal_fd,
 			       &temp_fd.fsal_fd, read_arg->state, FSAL_O_READ,
@@ -916,6 +924,11 @@ void gpfs_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 		 void *caller_arg)
 {
 	fsal_status_t status, status2;
+
+	if (write_arg->fsal_resume) {
+		gpfs_uring_resume(obj_hdl, done_cb, write_arg, caller_arg);
+		return;
+	}
 	struct gpfs_fd *my_fd;
 	struct gpfs_fd temp_fd = { FSAL_FD_INIT, -1 };
 	struct fsal_fd *out_fd;
@@ -938,7 +951,9 @@ void gpfs_write2(struct fsal_obj_handle *obj_hdl, bool bypass,
 			write_arg, caller_arg);
 		return;
 	}
-
+	if (gpfs_uring_queue_write(obj_hdl, bypass, done_cb, write_arg,
+				 caller_arg))
+		return;
 	/* Indicate a desire to start io and get a usable file descritor */
 	status = fsal_start_io(&out_fd, obj_hdl, &myself->u.file.fd.fsal_fd,
 			       &temp_fd.fsal_fd, write_arg->state, FSAL_O_WRITE,

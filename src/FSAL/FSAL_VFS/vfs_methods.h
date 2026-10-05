@@ -56,6 +56,10 @@ struct vfs_fsal_export {
 	struct fsal_export export;
 	int fsid_type;
 	bool async_hsm_restore;
+	/** Opt-in POSIX io_uring. Default is preadv/pwritev. */
+	bool use_io_uring;
+	/** Ring SQ/CQ entries per worker. Rounded up to a power of two. */
+	uint32_t io_uring_queue_depth;
 };
 
 #define EXPORT_VFS_FROM_FSAL(fsal) \
