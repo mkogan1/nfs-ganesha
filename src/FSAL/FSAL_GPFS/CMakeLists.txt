@@ -49,6 +49,7 @@ SET(fsalgpfs_LIB_SRCS
   fsal_internal.c
   gpfsext.c
   fsal_stats_gpfs.c
+  gpfs_io_uring.c
 )
 
 add_library(fsalgpfs MODULE ${fsalgpfs_LIB_SRCS})

@@ -26,6 +26,12 @@ EXPORT { FSAL {} }
 
 Name(string, "XFS")
     Name of FSAL should always be XFS.
+**io_uring(bool, default false)**
+    Requires the daemon built with -DWITH_SYSTEM_LIBURING=ON (default OFF).
+    Same shared ring as FSAL_VFS. Default remains preadv/pwritev.
+**io_uring_queue_depth(uint32, range 128 to 4096, default 128)**
+    Same per-worker ring size and outstanding-operation limit as VFS.
+    Submission waits until a completion callback releases capacity.
 
 XFS {}
 --------------------------------------------------------------------------------

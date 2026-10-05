@@ -322,6 +322,7 @@ gopt_test(LEGACY_METRICS)
 
 # nTIRPC
 option(USE_SYSTEM_NTIRPC "Use the system nTIRPC, rather than the submodule" OFF)
+option(WITH_SYSTEM_LIBURING "Use the system liburing for optional FSAL io_uring" OFF)
 option (USE_GSS "enable RPCSEC_GSS support" ON)
 option(TIRPC_EPOLL "platform supports EPOLL or emulation" ON)
 

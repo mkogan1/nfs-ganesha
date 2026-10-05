@@ -105,6 +105,7 @@ SET(support_STAT_SRCS
    nfs4_fs_locations.c
    xprt_handler.c
    ip_utils.c
+   gsh_io_uring.c
 )
 
 if(ERROR_INJECTION)
@@ -117,6 +118,20 @@ endif(ERROR_INJECTION)
 add_library(support OBJECT ${support_STAT_SRCS})
 add_sanitizers(support)
 set_target_properties(support PROPERTIES COMPILE_FLAGS "-fPIC")
+if(WITH_SYSTEM_LIBURING)
+  find_path(URING_INCLUDE_DIR NAMES liburing.h)
+  find_library(URING_LIBRARY NAMES uring)
+  if(NOT URING_INCLUDE_DIR OR NOT URING_LIBRARY)
+    message(FATAL_ERROR
+      "WITH_SYSTEM_LIBURING=ON but liburing.h or liburing was not found")
+  endif()
+  target_include_directories(support PRIVATE ${URING_INCLUDE_DIR})
+  target_compile_definitions(support PRIVATE USE_GSH_IO_URING)
+  message(STATUS "WITH_SYSTEM_LIBURING=ON (${URING_LIBRARY})")
+else()
+  message(STATUS
+    "WITH_SYSTEM_LIBURING=OFF; FSAL io_uring stays on the sync path")
+endif()
 
 if (USE_LTTNG)
 add_dependencies(support gsh_trace_header_generate)

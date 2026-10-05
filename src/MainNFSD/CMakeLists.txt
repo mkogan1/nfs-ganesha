@@ -238,6 +238,13 @@ target_link_libraries(ganesha_nfsd
   ${LTTNG_LIBRARIES}
   ${MOOSHIKA_LIBRARIES}
 )
+if(WITH_SYSTEM_LIBURING)
+  if(NOT URING_LIBRARY)
+    message(FATAL_ERROR
+      "WITH_SYSTEM_LIBURING=ON but liburing was not found")
+  endif()
+  target_link_libraries(ganesha_nfsd ${URING_LIBRARY})
+endif()
 
 if (USE_MONITORING)
   target_link_libraries(ganesha_nfsd ganesha_monitoring)
