@@ -27,6 +27,20 @@ Name(string, "vfs")
     Name of FSAL should always be vfs.
 
 **pnfs(bool, default false)**
+**io_uring(bool, default false)**
+    Requires the daemon built with -DWITH_SYSTEM_LIBURING=ON (default OFF).
+    Submit reads and writes through the shared io_uring ring.
+    Single-buffer requests use scalar READ/WRITE operations when their
+    length fits the SQE; other requests use READV/WRITEV.
+    The default remains preadv/pwritev. A stable write uses
+    RWF_SYNC instead of a following fsync. If the ring cannot
+    be created, I/O stays on preadv/pwritev.
+**io_uring_queue_depth(uint32, range 128 to 4096, default 128)**
+    Submission ring entries and maximum outstanding io_uring operations
+    for each NFS worker thread. Rounded up to a power of two. Operations
+    count against this limit until their completion callbacks return.
+    The first successful init on a thread latches the size, shared by
+    all exports using that thread. Submission waits at this limit.
 
 fsid_type(enum)
 	Possible values:

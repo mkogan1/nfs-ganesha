@@ -34,6 +34,7 @@ SET(fsalvfs_LIB_SRCS_common
    ../subfsal_helpers.c
    subfsal_vfs.c
    attrs.c
+   ../vfs_io_uring.c
 )
 
 set(fsalvfs_OBJS

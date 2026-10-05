@@ -56,6 +56,10 @@ struct gpfs_fsal_export {
 	bool pnfs_mds_enabled;
 	bool use_acl;
 	bool ignore_mode_change;
+	/** Opt-in POSIX io_uring on the GPFS fd. Default is the ioctl path. */
+	bool use_io_uring;
+	/** Ring SQ/CQ entries per worker. Rounded up to a power of two, min 128. */
+	uint32_t io_uring_queue_depth;
 };
 
 /*

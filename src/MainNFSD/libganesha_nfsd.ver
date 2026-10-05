@@ -142,6 +142,10 @@
   gsh_refstr_alloc;
   gsh_refstr_put;
   gsh_refstr_release;
+  gsh_uring_ensure;
+  gsh_uring_in_reaper;
+  gsh_uring_submit_rw;
+  gsh_uring_submit_rwv;
   gsh_mem_stats_update_alloc;
   gsh_mem_stats_update_free;
   g_max_files_delegatable;
