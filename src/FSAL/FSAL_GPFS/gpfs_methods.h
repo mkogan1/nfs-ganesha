@@ -60,6 +60,8 @@ struct gpfs_fsal_export {
 	bool use_io_uring;
 	/** Ring SQ/CQ entries per worker. Rounded up to a power of two, min 128. */
 	uint32_t io_uring_queue_depth;
+	uint32_t io_uring_sync_batch_size;
+	uint32_t io_uring_sync_delay_us;
 };
 
 /*

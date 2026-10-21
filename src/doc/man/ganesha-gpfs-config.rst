@@ -56,14 +56,38 @@ EXPORT { FSAL {} }
     stays on the ioctl path. If the ring cannot be created, I/O uses
     the ioctl path.
     A stable write (the client asked for DATA_SYNC or FILE_SYNC, or
-    NFS_Commit forced it) is submitted with RWF_SYNC.
+    NFS_Commit forced it) uses RWF_SYNC unless shared sync is enabled.
 **io_uring_queue_depth(uint32, range 128 to 4096, default 128)**
-    Submission ring entries and maximum outstanding io_uring operations
-    for each NFS worker thread. Rounded up to a power of two. Operations
-    count against this limit until their completion callbacks return.
-    The first successful ring init on a thread latches the size, shared
-    by all exports using that thread. The submitting thread waits when
-    the outstanding-operation limit is reached.
+    Maximum outstanding operations per NFS worker, rounded up to a power
+    of two. Operations count until their callbacks return; submission waits
+    at this limit. The first successful attachment fixes the worker's limit.
+    Up to four shared owners submit and complete I/O. A newly created owner
+    uses the attaching worker's queue depth, reserving one ring entry for
+    its wakeup poll. Workers attached later share that ring's size.
+    Owners batch up to 32 consecutive requests with matching credentials;
+    partial batches are flushed immediately by default. Client credentials and groups
+    are copied before queueing. Stable replies always wait for full synchronization.
+    SINGLE_ISSUER, COOP_TASKRUN and DEFER_TASKRUN are used when supported,
+    with fallback to ordinary ring setup on older kernels. Where supported,
+    each owner limits its bounded io-wq pool to eight workers.
+
+**io_uring_sync_batch_size(uint32, range 1 to 32, default 1)**
+    Opt in to shared synchronization for stable writes. A value of 1 retains
+    per-write RWF_SYNC. Larger values combine consecutive queued stable writes
+    with the same held file descriptor, credentials, and batching policy on
+    one owner. All writes complete before one full fsync is submitted; stable
+    replies wait for its completion. A sync failure fails every otherwise
+    successful write in that group. Different descriptors, including separate
+    opens of the same file, are not combined. Singletons and group-allocation
+    failures retain RWF_SYNC. This requires io_uring=true.
+**io_uring_sync_delay_us(uint32, range 0 to 1000, default 0)**
+    Maximum collection interval in microseconds from the first queued write
+    when shared sync is enabled. Zero groups only requests already queued.
+    Collection can overlap outstanding kernel I/O. Completions and ready syncs
+    are processed without waiting for collection to finish. A full batch or
+    an incompatible queued request ends collection early; wakeups do not
+    extend its deadline. Scheduler delays and queue backpressure may exceed
+    the requested interval. These export settings require a restart.
 
 See also
 ==============================

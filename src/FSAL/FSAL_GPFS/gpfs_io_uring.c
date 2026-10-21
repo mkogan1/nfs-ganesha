@@ -62,7 +62,8 @@ static bool gpfs_uring_wanted(struct fsal_io_arg *arg, bool is_write,
 		return false;
 	if (op_ctx == NULL || op_ctx->fsal_export == NULL)
 		return false;
-	exp = container_of(op_ctx->fsal_export, struct gpfs_fsal_export, export);
+	exp = container_of(op_ctx->fsal_export, struct gpfs_fsal_export,
+			   export);
 	if (!exp->use_io_uring)
 		return false;
 	*exp_out = exp;
@@ -198,8 +199,8 @@ static void gpfs_uring_ioctl_fallback(struct gpfs_uring_cbi *cbi)
 		else
 			status = GPFSFSAL_read(cbi->fd, offset,
 					       arg->iov[i].iov_len,
-					       arg->iov[i].iov_base,
-					       &io_amount, &arg->end_of_file,
+					       arg->iov[i].iov_base, &io_amount,
+					       &arg->end_of_file,
 					       cbi->export_fd);
 		if (FSAL_IS_ERROR(status))
 			break;
@@ -240,6 +241,8 @@ static bool gpfs_uring_queue(struct fsal_obj_handle *obj_hdl, bool bypass,
 	cbi = gsh_calloc(1, sizeof(*cbi), MEM_COMP_FSAL);
 	pthread_mutex_init(&cbi->lock, NULL);
 	cbi->op.complete = gpfs_uring_on_cqe;
+	cbi->op.sync_batch_size = exp->io_uring_sync_batch_size;
+	cbi->op.sync_delay_us = exp->io_uring_sync_delay_us;
 	cbi->arg = arg;
 	cbi->exp = op_ctx->ctx_export;
 	cbi->fsal_export = op_ctx->fsal_export;
@@ -260,7 +263,8 @@ static bool gpfs_uring_queue(struct fsal_obj_handle *obj_hdl, bool bypass,
 			       is_write ? FSAL_O_WRITE : FSAL_O_READ, false,
 			       NULL, bypass, &myself->u.file.share);
 	if (FSAL_IS_ERROR(status)) {
-		LogFullDebug(COMPONENT_FSAL, "fsal_start_io failed returning %s",
+		LogFullDebug(COMPONENT_FSAL,
+			     "fsal_start_io failed returning %s",
 			     fsal_err_txt(status));
 		cbi->status = status;
 		done_cb(obj_hdl, status, arg, caller_arg);
@@ -272,11 +276,9 @@ static bool gpfs_uring_queue(struct fsal_obj_handle *obj_hdl, bool bypass,
 	cbi->fd = container_of(out_fd, struct gpfs_fd, fsal_fd)->fd;
 	arg->io_amount = 0;
 
-	fsal_set_credentials(&op_ctx->creds);
 	rc = gsh_uring_submit_rwv(cbi->fd, is_write, arg->iov,
 				  (unsigned int)arg->iov_count, arg->offset,
-				  cbi->want_stable, &cbi->op);
-	fsal_restore_ganesha_credentials();
+				  cbi->want_stable, &cbi->op, &op_ctx->creds);
 
 	if (rc != 0) {
 		LogDebug(COMPONENT_FSAL,
@@ -312,9 +314,8 @@ bool gpfs_uring_queue_write(struct fsal_obj_handle *obj_hdl, bool bypass,
 				true);
 }
 
-void gpfs_uring_resume(struct fsal_obj_handle *obj_hdl,
-		       fsal_async_cb done_cb, struct fsal_io_arg *arg,
-		       void *caller_arg)
+void gpfs_uring_resume(struct fsal_obj_handle *obj_hdl, fsal_async_cb done_cb,
+		       struct fsal_io_arg *arg, void *caller_arg)
 {
 	struct gpfs_uring_cbi *cbi = arg->cbi;
 

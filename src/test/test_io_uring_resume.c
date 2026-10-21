@@ -4,10 +4,11 @@
 #include "config.h"
 #include "gsh_io_uring.h"
 static int capture_rw(int fd, bool write, void *buf, unsigned int len,
-		      uint64_t offset, bool stable, struct gsh_uring_op *op);
+		      uint64_t offset, bool stable, struct gsh_uring_op *op,
+		      const struct user_cred *creds);
 static int capture_rwv(int fd, bool write, const struct iovec *iov,
 		       unsigned int count, uint64_t offset, bool stable,
-		       struct gsh_uring_op *op);
+		       struct gsh_uring_op *op, const struct user_cred *creds);
 #define gsh_uring_submit_rw capture_rw
 #define gsh_uring_submit_rwv capture_rwv
 #endif
@@ -170,8 +171,9 @@ static struct vfs_uring_cbi *expected_submit;
 static unsigned int scalar_calls, vector_calls;
 
 static void check_submit(int fd, bool write, uint64_t offset, bool stable,
-			 struct gsh_uring_op *op)
+			 struct gsh_uring_op *op, const struct user_cred *creds)
 {
+	CHECK(creds == NULL);
 	CHECK(fd == expected_submit->fd);
 	CHECK(write == expected_submit->is_write);
 	CHECK(offset == expected_submit->arg->offset);
@@ -180,9 +182,10 @@ static void check_submit(int fd, bool write, uint64_t offset, bool stable,
 }
 
 static int capture_rw(int fd, bool write, void *buf, unsigned int len,
-		      uint64_t offset, bool stable, struct gsh_uring_op *op)
+		      uint64_t offset, bool stable, struct gsh_uring_op *op,
+		      const struct user_cred *creds)
 {
-	check_submit(fd, write, offset, stable, op);
+	check_submit(fd, write, offset, stable, op, creds);
 	CHECK(buf == expected_submit->arg->iov[0].iov_base);
 	CHECK(len == expected_submit->arg->iov[0].iov_len);
 	scalar_calls++;
@@ -191,9 +194,9 @@ static int capture_rw(int fd, bool write, void *buf, unsigned int len,
 
 static int capture_rwv(int fd, bool write, const struct iovec *iov,
 		       unsigned int count, uint64_t offset, bool stable,
-		       struct gsh_uring_op *op)
+		       struct gsh_uring_op *op, const struct user_cred *creds)
 {
-	check_submit(fd, write, offset, stable, op);
+	check_submit(fd, write, offset, stable, op, creds);
 	CHECK(iov == expected_submit->arg->iov);
 	CHECK(count == expected_submit->arg->iov_count);
 	vector_calls++;
@@ -214,21 +217,21 @@ static void test_submission_shape(bool write, bool stable)
 
 	expected_submit = &cbi;
 	scalar_calls = vector_calls = 0;
-	CHECK(vfs_uring_submit(&cbi) == -EINTR);
+	CHECK(vfs_uring_submit(&cbi, NULL) == -EINTR);
 	iov[0].iov_len = 0;
-	CHECK(vfs_uring_submit(&cbi) == -EINTR);
+	CHECK(vfs_uring_submit(&cbi, NULL) == -EINTR);
 	iov[0].iov_len = UINT32_MAX;
-	CHECK(vfs_uring_submit(&cbi) == -EINTR);
+	CHECK(vfs_uring_submit(&cbi, NULL) == -EINTR);
 	CHECK(scalar_calls == 3 && vector_calls == 0);
 #if SIZE_MAX > UINT32_MAX
 	iov[0].iov_len = (size_t)UINT32_MAX + 1;
-	CHECK(vfs_uring_submit(&cbi) == -EINTR);
+	CHECK(vfs_uring_submit(&cbi, NULL) == -EINTR);
 	CHECK(scalar_calls == 3 && vector_calls == 1);
 #endif
 	iov[0].iov_len = 4;
 	arg.iov_count = 2;
 	vector_calls = 0;
-	CHECK(vfs_uring_submit(&cbi) == -EINTR);
+	CHECK(vfs_uring_submit(&cbi, NULL) == -EINTR);
 	CHECK(scalar_calls == 3 && vector_calls == 1);
 	expected_submit = NULL;
 }

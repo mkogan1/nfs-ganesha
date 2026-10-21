@@ -4,8 +4,8 @@
  * @brief FSAL_VFS caller for the shared io_uring ring.
  *
  * One scalar or vectored SQE matches vfs_read2 / vfs_write2. A stable write
- * uses RWF_SYNC instead of a following fsync. READ_PLUS is left to the
- * existing ENOTSUP path in vfs_read2.
+ * uses RWF_SYNC or an explicitly enabled shared full fsync. READ_PLUS stays
+ * on the existing ENOTSUP path in vfs_read2.
  */
 #include "config.h"
 #include <errno.h>
@@ -198,7 +198,8 @@ static void vfs_uring_posix_fallback(struct vfs_uring_cbi *cbi)
 	cbi->status = status;
 }
 
-static int vfs_uring_submit(struct vfs_uring_cbi *cbi)
+static int vfs_uring_submit(struct vfs_uring_cbi *cbi,
+			    const struct user_cred *creds)
 {
 	struct fsal_io_arg *arg = cbi->arg;
 
@@ -207,10 +208,10 @@ static int vfs_uring_submit(struct vfs_uring_cbi *cbi)
 					   arg->iov[0].iov_base,
 					   (unsigned int)arg->iov[0].iov_len,
 					   arg->offset, cbi->want_stable,
-					   &cbi->op);
+					   &cbi->op, creds);
 	return gsh_uring_submit_rwv(cbi->fd, cbi->is_write, arg->iov,
 				    (unsigned int)arg->iov_count, arg->offset,
-				    cbi->want_stable, &cbi->op);
+				    cbi->want_stable, &cbi->op, creds);
 }
 
 static bool vfs_uring_queue(struct fsal_obj_handle *obj_hdl, bool bypass,
@@ -223,7 +224,9 @@ static bool vfs_uring_queue(struct fsal_obj_handle *obj_hdl, bool bypass,
 	struct fsal_fd *out_fd = NULL;
 	fsal_status_t status;
 	int rc;
-	bool creds = false;
+	bool only_one_user =
+		container_of(obj_hdl->fsal, struct vfs_fsal_module, module)
+			->only_one_user;
 
 	if (!vfs_uring_wanted(arg, &exp))
 		return false;
@@ -238,6 +241,8 @@ static bool vfs_uring_queue(struct fsal_obj_handle *obj_hdl, bool bypass,
 	cbi = gsh_calloc(1, sizeof(*cbi), MEM_COMP_FSAL);
 	pthread_mutex_init(&cbi->lock, NULL);
 	cbi->op.complete = vfs_uring_on_cqe;
+	cbi->op.sync_batch_size = exp->io_uring_sync_batch_size;
+	cbi->op.sync_delay_us = exp->io_uring_sync_delay_us;
 	cbi->arg = arg;
 	cbi->exp = op_ctx->ctx_export;
 	cbi->fsal_export = op_ctx->fsal_export;
@@ -256,7 +261,8 @@ static bool vfs_uring_queue(struct fsal_obj_handle *obj_hdl, bool bypass,
 			       is_write ? FSAL_O_WRITE : FSAL_O_READ, false,
 			       NULL, bypass, &myself->u.file.share);
 	if (FSAL_IS_ERROR(status)) {
-		LogFullDebug(COMPONENT_FSAL, "fsal_start_io failed returning %s",
+		LogFullDebug(COMPONENT_FSAL,
+			     "fsal_start_io failed returning %s",
 			     fsal_err_txt(status));
 		cbi->status = status;
 		done_cb(obj_hdl, status, arg, caller_arg);
@@ -268,21 +274,19 @@ static bool vfs_uring_queue(struct fsal_obj_handle *obj_hdl, bool bypass,
 	cbi->fd = container_of(out_fd, struct vfs_fd, fsal_fd)->fd;
 	arg->io_amount = 0;
 
-	if (is_write) {
-		if (!vfs_set_credentials(&op_ctx->creds, obj_hdl->fsal)) {
-			cbi->status = posix2fsal_status(EPERM);
-			vfs_uring_release(cbi);
-			return true;
-		}
-		creds = true;
+	if (is_write && only_one_user &&
+	    !fsal_set_credentials_only_one_user(&op_ctx->creds)) {
+		cbi->status = posix2fsal_status(EPERM);
+		vfs_uring_release(cbi);
+		return true;
 	}
-	rc = vfs_uring_submit(cbi);
-	if (creds)
-		vfs_restore_ganesha_credentials(obj_hdl->fsal);
+	rc = vfs_uring_submit(cbi, is_write && !only_one_user ? &op_ctx->creds
+							      : NULL);
 	if (rc != 0) {
-		LogDebug(COMPONENT_FSAL,
-			 "VFS io_uring: submit failed (%d); using preadv/pwritev",
-			 rc);
+		LogDebug(
+			COMPONENT_FSAL,
+			"VFS io_uring: submit failed (%d); using preadv/pwritev",
+			rc);
 		if (is_write &&
 		    !vfs_set_credentials(&op_ctx->creds, obj_hdl->fsal)) {
 			cbi->status = posix2fsal_status(EPERM);
@@ -323,9 +327,8 @@ bool vfs_uring_queue_write(struct fsal_obj_handle *obj_hdl, bool bypass,
 			       true);
 }
 
-void vfs_uring_resume(struct fsal_obj_handle *obj_hdl,
-		       fsal_async_cb done_cb, struct fsal_io_arg *arg,
-		       void *caller_arg)
+void vfs_uring_resume(struct fsal_obj_handle *obj_hdl, fsal_async_cb done_cb,
+		      struct fsal_io_arg *arg, void *caller_arg)
 {
 	struct vfs_uring_cbi *cbi = arg->cbi;
 

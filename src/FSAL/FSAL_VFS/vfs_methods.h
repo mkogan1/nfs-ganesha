@@ -60,6 +60,8 @@ struct vfs_fsal_export {
 	bool use_io_uring;
 	/** Ring SQ/CQ entries per worker. Rounded up to a power of two. */
 	uint32_t io_uring_queue_depth;
+	uint32_t io_uring_sync_batch_size;
+	uint32_t io_uring_sync_delay_us;
 };
 
 #define EXPORT_VFS_FROM_FSAL(fsal) \

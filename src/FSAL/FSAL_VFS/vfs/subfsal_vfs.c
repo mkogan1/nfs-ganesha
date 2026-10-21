@@ -58,6 +58,10 @@ static struct config_item export_params[] = {
 	CONF_ITEM_BOOL("io_uring", false, vfs_fsal_export, use_io_uring),
 	CONF_ITEM_UI32("io_uring_queue_depth", 128, 4096, 128, vfs_fsal_export,
 		       io_uring_queue_depth),
+	CONF_ITEM_UI32("io_uring_sync_batch_size", 1, 32, 1, vfs_fsal_export,
+		       io_uring_sync_batch_size),
+	CONF_ITEM_UI32("io_uring_sync_delay_us", 0, 1000, 0, vfs_fsal_export,
+		       io_uring_sync_delay_us),
 	CONFIG_EOL
 };
 

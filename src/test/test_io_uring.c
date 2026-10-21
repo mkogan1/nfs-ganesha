@@ -10,7 +10,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/syscall.h>
 #include "gsh_io_uring.h"
+#include "FSAL/access_check.h"
 #include "log.h"
 
 /* Unlike assert(), these checks remain enabled in release builds. */
@@ -22,6 +24,9 @@
 			abort();                                        \
 		}                                                       \
 	} while (0)
+
+static uid_t test_server_uid;
+static struct user_cred test_server_creds;
 
 struct test_io {
 	struct gsh_uring_op op;
@@ -39,6 +44,8 @@ static void complete(struct gsh_uring_op *op, int result)
 	struct test_io *io = (struct test_io *)op;
 
 	CHECK(gsh_uring_in_reaper());
+	CHECK(gsh_uring_ensure(128) == -EAGAIN);
+	CHECK(geteuid() == test_server_uid);
 	pthread_mutex_lock(&io->lock);
 	io->completed++;
 	io->result = result;
@@ -95,44 +102,50 @@ static void *test_file_io(void *unused)
 	/* Neither invalid submission may arm a callback or alter the file. */
 	for (i = 0; i < sizeof(bad_offsets) / sizeof(bad_offsets[0]); i++) {
 		CHECK(gsh_uring_submit_rw(fd, true, data, 4, bad_offsets[i],
-					  false, &io.op) == -EINVAL);
+					  false, &io.op, NULL) == -EINVAL);
 		CHECK(gsh_uring_submit_rwv(fd, true, iov, 2, bad_offsets[i],
-					   false, &io.op) == -EINVAL);
+					   false, &io.op, NULL) == -EINVAL);
 		CHECK(gsh_uring_submit_rw(fd, false, readback, 4,
-					  bad_offsets[i], false,
-					  &io.op) == -EINVAL);
+					  bad_offsets[i], false, &io.op,
+					  NULL) == -EINVAL);
 		CHECK(gsh_uring_submit_rwv(fd, false, iov, 2, bad_offsets[i],
-					   false, &io.op) == -EINVAL);
+					   false, &io.op, NULL) == -EINVAL);
 	}
-	CHECK(gsh_uring_submit_rw(fd, true, data, 4, 0, false, NULL) ==
+	CHECK(gsh_uring_submit_rw(fd, true, data, 4, 0, false, NULL, NULL) ==
 	      -EINVAL);
-	CHECK(gsh_uring_submit_rwv(fd, true, iov, 2, 0, false, NULL) ==
+	CHECK(gsh_uring_submit_rwv(fd, true, iov, 2, 0, false, NULL, NULL) ==
 	      -EINVAL);
 
 	/* Exercise both stable-write SQE types and both read types. */
-	CHECK(gsh_uring_submit_rw(fd, true, data, 4, 4, true, &io.op) == 0);
-	wait_io(&io, 1, 4);
-	CHECK(gsh_uring_submit_rwv(fd, true, iov, 2, 8, true, &io.op) == 0);
-	wait_io(&io, 2, 4);
-	CHECK(gsh_uring_submit_rw(fd, false, readback, 4, 4, false, &io.op) ==
+	CHECK(gsh_uring_submit_rw(fd, true, data, 4, 4, true, &io.op, NULL) ==
 	      0);
+	wait_io(&io, 1, 4);
+	CHECK(gsh_uring_submit_rwv(fd, true, iov, 2, 8, true, &io.op, NULL) ==
+	      0);
+	wait_io(&io, 2, 4);
+	CHECK(gsh_uring_submit_rw(fd, false, readback, 4, 4, false, &io.op,
+				  NULL) == 0);
 	wait_io(&io, 3, 4);
 	CHECK(memcmp(data, readback, 4) == 0);
 	memset(readback, 0, sizeof(readback));
 	iov[0].iov_base = readback;
 	iov[1].iov_base = readback + 2;
-	CHECK(gsh_uring_submit_rwv(fd, false, iov, 2, 8, false, &io.op) == 0);
+	CHECK(gsh_uring_submit_rwv(fd, false, iov, 2, 8, false, &io.op, NULL) ==
+	      0);
 	wait_io(&io, 4, 4);
 	CHECK(memcmp(data, readback, 4) == 0);
 	/* A short vectored read fills only a prefix of the supplied buffers. */
 	memset(readback, '?', sizeof(readback));
-	CHECK(gsh_uring_submit_rwv(fd, false, iov, 2, 10, false, &io.op) == 0);
+	CHECK(gsh_uring_submit_rwv(fd, false, iov, 2, 10, false, &io.op,
+				   NULL) == 0);
 	wait_io(&io, 5, 2);
 	CHECK(memcmp(readback, "cd??", 4) == 0);
-	CHECK(gsh_uring_submit_rwv(fd, false, iov, 2, 12, false, &io.op) == 0);
+	CHECK(gsh_uring_submit_rwv(fd, false, iov, 2, 12, false, &io.op,
+				   NULL) == 0);
 	wait_io(&io, 6, 0);
 	CHECK(memcmp(readback, "cd??", 4) == 0);
-	CHECK(gsh_uring_submit_rwv(-1, false, iov, 2, 0, false, &io.op) == 0);
+	CHECK(gsh_uring_submit_rwv(-1, false, iov, 2, 0, false, &io.op, NULL) ==
+	      0);
 	wait_io(&io, 7, -EBADF);
 	CHECK(lseek(fd, 0, SEEK_CUR) == 0);
 	CHECK(pread(fd, readback, 4, 0) == 4);
@@ -148,7 +161,7 @@ static void *submit_then_exit(void *arg)
 
 	CHECK(gsh_uring_ensure(128) == 0);
 	CHECK(gsh_uring_submit_rw(io->fd, false, &io->byte, 1, 0, false,
-				  &io->op) == 0);
+				  &io->op, NULL) == 0);
 	pthread_mutex_lock(&io->lock);
 	io->submitted = true;
 	pthread_cond_signal(&io->cv);
@@ -215,6 +228,8 @@ static void depth_complete(struct gsh_uring_op *op, int result)
 	struct depth_test *test = req->test;
 
 	CHECK(gsh_uring_in_reaper());
+	CHECK(gsh_uring_ensure(128) == -EAGAIN);
+	CHECK(geteuid() == test_server_uid);
 	CHECK(result == 1);
 	CHECK(req->byte == 'x');
 	pthread_mutex_lock(&test->lock);
@@ -250,10 +265,12 @@ static void *fill_ring(void *arg)
 		req->iov.iov_len = 1;
 		if (i % 2 == 0)
 			CHECK(gsh_uring_submit_rw(test->fd, false, &req->byte,
-						  1, 0, false, &req->op) == 0);
+						  1, 0, false, &req->op,
+						  NULL) == 0);
 		else
 			CHECK(gsh_uring_submit_rwv(test->fd, false, &req->iov,
-						   1, 0, false, &req->op) == 0);
+						   1, 0, false, &req->op,
+						   NULL) == 0);
 		pthread_mutex_lock(&test->lock);
 		if (i == TEST_DEPTH - 1)
 			test->filled = true;
@@ -319,6 +336,141 @@ static void test_depth_and_batches(void)
 	CHECK(pthread_cond_destroy(&test.cv) == 0);
 }
 
+/* Exercise grouped scalar/vector writes, a low-load singleton, and a tail
+ * smaller than the configured batch. Producer exit must await shared syncs.
+ */
+static void *test_grouped_writes(void *unused)
+{
+	struct test_io ios[67];
+	struct iovec vectors[67];
+	char name[] = "/tmp/ganesha-uring-group.XXXXXX", data[67];
+	int fd;
+	unsigned int i;
+
+	(void)unused;
+	CHECK(gsh_uring_ensure(128) == 0);
+	fd = mkstemp(name);
+	CHECK(fd >= 0 && unlink(name) == 0);
+	for (i = 0; i < 67; i++) {
+		init_io(&ios[i]);
+		ios[i].byte = (char)i;
+		ios[i].op.sync_batch_size = 16;
+		ios[i].op.sync_delay_us = 1000;
+		vectors[i] = (struct iovec){ .iov_base = &ios[i].byte,
+					     .iov_len = 1 };
+		if (i % 2)
+			CHECK(gsh_uring_submit_rwv(fd, true, &vectors[i], 1, i,
+						   true, &ios[i].op,
+						   NULL) == 0);
+		else
+			CHECK(gsh_uring_submit_rw(fd, true, &ios[i].byte, 1, i,
+						  true, &ios[i].op, NULL) == 0);
+		/*
+		 * The first single request must complete without a second
+		 * arrival.
+		 */
+		if (i == 0)
+			wait_io(&ios[i], 1, 1);
+	}
+	for (i = 0; i < 67; i++) {
+		wait_io(&ios[i], 1, 1);
+		destroy_io(&ios[i]);
+	}
+	CHECK(pread(fd, data, sizeof(data), 0) == sizeof(data));
+	for (i = 0; i < 67; i++)
+		CHECK(data[i] == (char)i);
+	CHECK(close(fd) == 0);
+	return NULL;
+}
+
+/* More producers than owners exercise shared-ring lifetime and routing. */
+static pthread_barrier_t shared_barrier;
+static void *shared_producer(void *unused)
+{
+	(void)unused;
+	CHECK(gsh_uring_ensure(128) == 0);
+	pthread_barrier_wait(&shared_barrier);
+	test_file_io(NULL);
+	pthread_barrier_wait(&shared_barrier);
+	return NULL;
+}
+
+static void test_shared_owners(void)
+{
+	pthread_t threads[12];
+	unsigned int i;
+
+	CHECK(pthread_barrier_init(&shared_barrier, NULL, 12) == 0);
+	for (i = 0; i < 12; i++)
+		CHECK(pthread_create(&threads[i], NULL, shared_producer,
+				     NULL) == 0);
+	for (i = 0; i < 12; i++)
+		CHECK(pthread_join(threads[i], NULL) == 0);
+	CHECK(pthread_barrier_destroy(&shared_barrier) == 0);
+}
+
+/* The kernel must apply the queued user's privilege-bit removal rules. */
+static void *test_credentials(void *unused)
+{
+	struct test_io ios[24];
+	int fds[24];
+	mode_t expected[24];
+	struct stat st;
+	unsigned int i;
+	gid_t groups[] = { 12345 };
+	struct user_cred creds = { .caller_uid = 12345,
+				   .caller_gid = 12346,
+				   .caller_glen = 1,
+				   .caller_garray = groups };
+
+	(void)unused;
+	if (geteuid() != 0) {
+		puts("credential impersonation test requires root; skipped");
+		return NULL;
+	}
+	CHECK(gsh_uring_ensure(128) == 0);
+	for (i = 0; i < 24; i++) {
+		char name[] = "/tmp/ganesha-uring-creds.XXXXXX";
+
+		fds[i] = mkstemp(name);
+		CHECK(fds[i] >= 0);
+		CHECK(unlink(name) == 0);
+		CHECK(fchown(fds[i], 12345, 12345) == 0);
+		CHECK(fchmod(fds[i], 06755) == 0);
+		if (i % 2)
+			fsal_set_credentials(&creds);
+		CHECK(pwrite(fds[i], "x", 1, 0) == 1);
+		if (i % 2) {
+			CHECK(syscall(SYS_setresuid, -1, test_server_uid, -1) ==
+			      0);
+			fsal_set_credentials(&test_server_creds);
+		}
+		CHECK(fstat(fds[i], &st) == 0);
+		expected[i] = st.st_mode;
+		CHECK(fchmod(fds[i], 06755) == 0);
+		init_io(&ios[i]);
+	}
+	/* This filesystem must distinguish privileged/unprivileged writes. */
+	CHECK(expected[0] != expected[1]);
+	for (i = 0; i < 24; i++) {
+		ios[i].byte = 'y';
+		CHECK(gsh_uring_submit_rw(fds[i], true, &ios[i].byte, 1, 0,
+					  true, &ios[i].op,
+					  i % 2 ? &creds : NULL) == 0);
+	}
+	/* The owner must not retain pointers into the caller's credentials. */
+	creds.caller_uid = 0;
+	groups[0] = 0;
+	for (i = 0; i < 24; i++) {
+		wait_io(&ios[i], 1, 1);
+		CHECK(fstat(fds[i], &st) == 0);
+		CHECK(st.st_mode == expected[i]);
+		CHECK(close(fds[i]) == 0);
+		destroy_io(&ios[i]);
+	}
+	return NULL;
+}
+
 int main(int argc, char **argv)
 {
 	pthread_t thread;
@@ -334,19 +486,37 @@ int main(int argc, char **argv)
 		CHECK(gsh_uring_ensure(128) == -ENOSYS);
 		CHECK(!gsh_uring_in_reaper());
 		CHECK(gsh_uring_submit_rw(-1, false, &io.byte, 1, 0, false,
-					  &io.op) == -ENOSYS);
-		CHECK(gsh_uring_submit_rwv(-1, false, &iov, 1, 0, false,
-					   &io.op) == -ENOSYS);
+					  &io.op, NULL) == -ENOSYS);
+		CHECK(gsh_uring_submit_rwv(-1, false, &iov, 1, 0, false, &io.op,
+					   NULL) == -ENOSYS);
 		CHECK(io.completed == 0);
 		destroy_io(&io);
 		puts("io_uring disabled-build tests passed");
 		return 0;
 	}
 	CHECK(argc == 1);
+	test_server_creds.caller_uid = geteuid();
+	test_server_creds.caller_gid = getegid();
+	test_server_creds.caller_glen = getgroups(0, NULL);
+	CHECK(test_server_creds.caller_glen < 65536);
+	test_server_creds.caller_garray =
+		calloc(test_server_creds.caller_glen + 1, sizeof(gid_t));
+	CHECK(test_server_creds.caller_garray);
+	CHECK(getgroups(test_server_creds.caller_glen,
+			test_server_creds.caller_garray) ==
+	      test_server_creds.caller_glen);
+	test_server_uid = geteuid();
 	CHECK(pthread_create(&thread, NULL, test_file_io, NULL) == 0);
 	CHECK(pthread_join(thread, NULL) == 0);
 	test_pending_exit();
 	test_depth_and_batches();
-	puts("io_uring offset, file I/O, pending-exit, and depth tests passed");
+	test_shared_owners();
+	CHECK(pthread_create(&thread, NULL, test_grouped_writes, NULL) == 0);
+	CHECK(pthread_join(thread, NULL) == 0);
+	CHECK(pthread_create(&thread, NULL, test_credentials, NULL) == 0);
+	CHECK(pthread_join(thread, NULL) == 0);
+	free(test_server_creds.caller_garray);
+	puts("io_uring file I/O, depth, shared-owner, retirement, "
+	     "and credential tests passed");
 	return 0;
 }
